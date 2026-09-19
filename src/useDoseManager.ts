@@ -44,6 +44,7 @@ export type ConfirmBanner = {
 };
 
 const DOUBLE_TAP_GUARD_MS = 1_000;
+const EARLY_CONFIRM_WINDOW_MS = 60 * 60 * 1000; // main button confirms up to 60 min early
 const BANNER_DURATION_MS = 2_000;
 const CONFIRM_SPEECH = 'Записано. Спасибо!';
 const NOTHING_PENDING_SPEECH = 'На сегодня всё принято';
@@ -297,38 +298,46 @@ export function useDoseManager() {
     [scheduleAndTrack, clearEscalationTimer, showBanner]
   );
 
-  // Tapping a delivered reminder notification confirms that exact dose,
-  // going through the same confirmDose() as the main screen and alarm
-  // screen buttons.
+  // Tapping a delivered reminder notification opens that dose's alarm
+  // screen (rather than silently confirming it), so the user still goes
+  // through the same speech/vibration/confirm flow.
   useEffect(() => {
     const sub = addNotificationTapListener((pillId) => {
-      const pill =
-        pillsRef.current.find((p) => p.id === pillId) ??
-        (activeAlarmRef.current?.pill.id === pillId
-          ? activeAlarmRef.current.pill
-          : null);
-      if (pill) confirmDose(pill);
+      if (activeAlarmRef.current?.pill.id === pillId) return;
+      const pill = pillsRef.current.find((p) => p.id === pillId);
+      if (pill) activateAlarm(pill, todayOccurrence(pill.time, new Date()));
     });
     return () => sub.remove();
-  }, [confirmDose]);
+  }, [activateAlarm]);
 
   // What the main screen's green circle confirms when pressed:
   // 1) the active alarm's dose, if one is showing;
-  // 2) otherwise the oldest overdue-but-untaken dose today;
-  // 3) otherwise the soonest upcoming dose today (lets a user confirm early);
-  // 4) otherwise there's nothing left to do today — say so, log nothing.
+  // 2) otherwise the oldest overdue-but-untaken dose today, or the soonest
+  //    upcoming one if it's due within the next hour (lets a user confirm
+  //    early without waiting for the alarm);
+  // 3) otherwise — nothing due/overdue/soon, or nothing left today — say so
+  //    and log nothing.
   const confirmMainButtonDose = useCallback(async () => {
     if (activeAlarmRef.current) {
       await confirmDose(activeAlarmRef.current.pill);
       return;
     }
     const pending = getNextPendingPill(pillsRef.current, doseLogRef.current);
-    if (pending) {
-      await confirmDose(pending);
+    if (!pending) {
+      Speech.speak(NOTHING_PENDING_SPEECH, { language: 'ru-RU' });
+      showBanner(NOTHING_PENDING_SPEECH, 'info');
       return;
     }
-    Speech.speak(NOTHING_PENDING_SPEECH, { language: 'ru-RU' });
-    showBanner(NOTHING_PENDING_SPEECH, 'info');
+    const now = new Date();
+    const scheduled = todayOccurrence(pending.time, now);
+    const eligible = scheduled.getTime() - now.getTime() <= EARLY_CONFIRM_WINDOW_MS;
+    if (!eligible) {
+      const text = `Ещё рано. Следующий приём в ${pending.time}`;
+      Speech.speak(text, { language: 'ru-RU' });
+      showBanner(text, 'info');
+      return;
+    }
+    await confirmDose(pending);
   }, [confirmDose, showBanner]);
 
   const saveFamilyPhone = useCallback(async (phone: string) => {
