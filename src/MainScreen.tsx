@@ -33,9 +33,10 @@ export function MainScreen() {
     nextPendingPill,
     familyPhone,
     activeAlarm,
+    banner,
     addPill,
     confirmDose,
-    confirmNextPendingDose,
+    confirmMainButtonDose,
     triggerDemoAlarm,
   } = useDoseManager();
 
@@ -114,7 +115,7 @@ export function MainScreen() {
               label="Принял(а)"
               backgroundColor={colors.green}
               size={topSize}
-              onPress={confirmNextPendingDose}
+              onPress={confirmMainButtonDose}
             />
           </View>
 
@@ -150,6 +151,25 @@ export function MainScreen() {
           <Text style={styles.addButtonText}>+ Добавить лекарство</Text>
         </Pressable>
       </View>
+
+      {banner && (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.banner,
+            banner.tone === 'success' ? styles.bannerSuccess : styles.bannerInfo,
+          ]}
+        >
+          <Text
+            style={[
+              styles.bannerText,
+              banner.tone === 'info' && styles.bannerTextInfo,
+            ]}
+          >
+            {banner.text}
+          </Text>
+        </View>
+      )}
 
       <AddPillModal
         visible={addModalVisible}
@@ -237,5 +257,30 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: colors.blue,
+  },
+  banner: {
+    position: 'absolute',
+    top: 64,
+    left: 16,
+    right: 16,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  bannerSuccess: {
+    backgroundColor: colors.green,
+  },
+  bannerInfo: {
+    backgroundColor: colors.panel,
+  },
+  bannerText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.onButton,
+    textAlign: 'center',
+  },
+  bannerTextInfo: {
+    color: colors.text,
   },
 });

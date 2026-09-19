@@ -4,6 +4,7 @@ import { AppState, Vibration } from 'react-native';
 
 import { ESCALATION_MINUTES } from './config';
 import {
+  addNotificationTapListener,
   cancelDoseReminders,
   dismissDeliveredNotifications,
   doseKey,
@@ -32,6 +33,16 @@ export type ActiveAlarm = {
   scheduledAt: Date;
   escalated: boolean;
 };
+
+export type ConfirmBanner = {
+  text: string;
+  tone: 'success' | 'info';
+};
+
+const DOUBLE_TAP_GUARD_MS = 1_000;
+const BANNER_DURATION_MS = 2_000;
+const CONFIRM_SPEECH = 'Записано. Спасибо!';
+const NOTHING_PENDING_SPEECH = 'На сегодня всё принято';
 
 // Returns today's occurrence of `time` ("HH:MM"), or tomorrow's if it has
 // already passed relative to `now`.
@@ -81,6 +92,18 @@ export function useDoseManager() {
   const [doseLog, setDoseLog] = useState<DoseLogEntry[]>([]);
   const [familyPhone, setFamilyPhoneState] = useState<string>('');
   const [activeAlarm, setActiveAlarm] = useState<ActiveAlarm | null>(null);
+  const [banner, setBanner] = useState<ConfirmBanner | null>(null);
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showBanner = useCallback((text: string, tone: ConfirmBanner['tone']) => {
+    if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+    setBanner({ text, tone });
+    bannerTimerRef.current = setTimeout(() => setBanner(null), BANNER_DURATION_MS);
+  }, []);
+
+  // Guards against double-tapping/duplicate triggers (button + notification
+  // tap racing, etc.) confirming the same dose twice within one second.
+  const lastConfirmedAtRef = useRef<Record<string, number>>({});
 
   const activeAlarmRef = useRef<ActiveAlarm | null>(null);
   useEffect(() => {
@@ -201,6 +224,7 @@ export function useDoseManager() {
       clearInterval(interval);
       sub.remove();
       clearEscalationTimer();
+      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
     };
   }, [checkDue, clearEscalationTimer]);
 
@@ -224,6 +248,14 @@ export function useDoseManager() {
   // pill's following occurrence.
   const confirmDose = useCallback(
     async (pill: Pill) => {
+      const now = Date.now();
+      if (now - (lastConfirmedAtRef.current[pill.id] ?? 0) < DOUBLE_TAP_GUARD_MS) {
+        return;
+      }
+      lastConfirmedAtRef.current[pill.id] = now;
+
+      console.log(`[SilverCare] confirmed dose: ${pill.name} (${pill.time})`);
+
       const today = todayDateString();
       await cancelDoseReminders(doseKey(pill.id, today));
       await dismissDeliveredNotifications();
@@ -250,14 +282,47 @@ export function useDoseManager() {
         nextUnresolvedOccurrence(pill, log, new Date())
       );
       await logScheduledCount('after confirm');
+
+      Vibration.vibrate(200);
+      Speech.speak(CONFIRM_SPEECH, { language: 'ru-RU' });
+      showBanner('Принято', 'success');
     },
-    [scheduleAndTrack, clearEscalationTimer]
+    [scheduleAndTrack, clearEscalationTimer, showBanner]
   );
 
-  const confirmNextPendingDose = useCallback(async () => {
-    const pending = getNextPendingPill(pillsRef.current, doseLogRef.current);
-    if (pending) await confirmDose(pending);
+  // Tapping a delivered reminder notification confirms that exact dose,
+  // going through the same confirmDose() as the main screen and alarm
+  // screen buttons.
+  useEffect(() => {
+    const sub = addNotificationTapListener((pillId) => {
+      const pill =
+        pillsRef.current.find((p) => p.id === pillId) ??
+        (activeAlarmRef.current?.pill.id === pillId
+          ? activeAlarmRef.current.pill
+          : null);
+      if (pill) confirmDose(pill);
+    });
+    return () => sub.remove();
   }, [confirmDose]);
+
+  // What the main screen's green circle confirms when pressed:
+  // 1) the active alarm's dose, if one is showing;
+  // 2) otherwise the oldest overdue-but-untaken dose today;
+  // 3) otherwise the soonest upcoming dose today (lets a user confirm early);
+  // 4) otherwise there's nothing left to do today — say so, log nothing.
+  const confirmMainButtonDose = useCallback(async () => {
+    if (activeAlarmRef.current) {
+      await confirmDose(activeAlarmRef.current.pill);
+      return;
+    }
+    const pending = getNextPendingPill(pillsRef.current, doseLogRef.current);
+    if (pending) {
+      await confirmDose(pending);
+      return;
+    }
+    Speech.speak(NOTHING_PENDING_SPEECH, { language: 'ru-RU' });
+    showBanner(NOTHING_PENDING_SPEECH, 'info');
+  }, [confirmDose, showBanner]);
 
   const triggerDemoAlarm = useCallback(() => {
     setTimeout(() => {
@@ -284,9 +349,10 @@ export function useDoseManager() {
     nextPendingPill,
     familyPhone,
     activeAlarm,
+    banner,
     addPill,
     confirmDose,
-    confirmNextPendingDose,
+    confirmMainButtonDose,
     triggerDemoAlarm,
   };
 }

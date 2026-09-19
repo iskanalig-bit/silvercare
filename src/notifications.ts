@@ -104,6 +104,7 @@ export async function scheduleDoseReminders(
           title: 'Пора принять лекарство',
           body: `${pill.name} — пожалуйста, подтвердите приём в приложении SilverCare`,
           sound: true,
+          data: { pillId: pill.id, date },
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -139,6 +140,21 @@ export async function dismissDeliveredNotifications(): Promise<void> {
   } catch {
     // ignore
   }
+}
+
+// Fires when the user taps a delivered notification (from the tray, or the
+// in-app banner while the app is foregrounded). Used to route straight into
+// the same confirmDose() the main screen and alarm screen use.
+export function addNotificationTapListener(
+  handler: (pillId: string) => void
+): { remove: () => void } {
+  const subscription = Notifications.addNotificationResponseReceivedListener(
+    (response) => {
+      const pillId = response.notification.request.content.data?.pillId;
+      if (typeof pillId === 'string') handler(pillId);
+    }
+  );
+  return { remove: () => subscription.remove() };
 }
 
 export async function logScheduledCount(label: string): Promise<void> {
