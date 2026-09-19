@@ -29,7 +29,7 @@ import {
   setFamilyPhone as setFamilyPhoneInStorage,
   todayDateString,
 } from './storage';
-import { sendMissedDoseAlert } from './telegram';
+import { sendLateDoseAlert, sendMissedDoseAlert } from './telegram';
 
 const CHECK_INTERVAL_MS = 15_000;
 
@@ -267,6 +267,10 @@ export function useDoseManager() {
       console.log(`[SilverCare] confirmed dose: ${pill.name} (${pill.time})`);
 
       const today = todayDateString();
+      const wasMissed = doseLogRef.current.some(
+        (e) => e.pillId === pill.id && e.date === today && e.status === 'missed'
+      );
+
       await cancelDoseReminders(doseKey(pill.id, today));
       await dismissDeliveredNotifications();
       Speech.stop();
@@ -292,6 +296,9 @@ export function useDoseManager() {
         nextUnresolvedOccurrence(pill, log, new Date())
       );
       await logScheduledCount('after confirm');
+      if (wasMissed) {
+        sendLateDoseAlert(pill.name).catch(() => {});
+      }
 
       Vibration.vibrate(200);
       Speech.speak(CONFIRM_SPEECH, { language: 'ru-RU' });
