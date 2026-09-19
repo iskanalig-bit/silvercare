@@ -3,6 +3,7 @@ export const colors = {
   text: '#0B1F33',
   green: '#1A5C3A',
   blue: '#1D4E89',
+  navy: '#0B1F33',
   panel: '#DDE3E6',
   border: '#DDE3E6',
   amber: '#8A5A00',

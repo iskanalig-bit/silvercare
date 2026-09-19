@@ -65,7 +65,7 @@ export function AlarmScreen({ pill, escalated, onConfirm, onCall }: AlarmScreenP
 
           <View style={styles.confirmWrap}>
             <CircleButton
-              icon="✅"
+              icon="checkmark-circle-outline"
               label="Принял(а)"
               backgroundColor={colors.green}
               onPress={onConfirm}
