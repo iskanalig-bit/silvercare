@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -14,11 +14,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Pill } from './storage';
 import { colors } from './theme';
 
+const MIN_PHONE_DIGITS = 10;
+
 type SettingsModalProps = {
   visible: boolean;
   onClose: () => void;
   familyPhone: string | null;
-  onSaveFamilyPhone: (phone: string) => void;
+  onSaveFamilyPhone: (phone: string) => void | Promise<void>;
   pills: Pill[];
   onDeletePill: (pillId: string) => void;
   onResetData: () => void;
@@ -34,14 +36,33 @@ export function SettingsModal({
   onResetData,
 }: SettingsModalProps) {
   const [phoneInput, setPhoneInput] = useState(familyPhone ?? '');
+  const [phoneStatus, setPhoneStatus] = useState<'saved' | 'invalid' | null>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (visible) setPhoneInput(familyPhone ?? '');
+    if (visible) {
+      setPhoneInput(familyPhone ?? '');
+      setPhoneStatus(null);
+    }
   }, [visible, familyPhone]);
 
-  const handleSavePhone = () => {
+  useEffect(
+    () => () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    },
+    []
+  );
+
+  const handleSavePhone = async () => {
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
     const trimmed = phoneInput.trim();
-    if (trimmed.length > 0) onSaveFamilyPhone(trimmed);
+    if (trimmed.replace(/\D/g, '').length < MIN_PHONE_DIGITS) {
+      setPhoneStatus('invalid');
+      return;
+    }
+    await onSaveFamilyPhone(trimmed);
+    setPhoneStatus('saved');
+    savedTimerRef.current = setTimeout(() => setPhoneStatus(null), 2000);
   };
 
   const confirmReset = () => {
@@ -74,12 +95,19 @@ export function SettingsModal({
             placeholder="+7 900 000 00 00"
             placeholderTextColor={colors.placeholder}
             value={phoneInput}
-            onChangeText={setPhoneInput}
+            onChangeText={(text) => {
+              setPhoneInput(text);
+              if (phoneStatus === 'invalid') setPhoneStatus(null);
+            }}
             keyboardType="phone-pad"
           />
           <Pressable style={styles.saveButton} onPress={handleSavePhone}>
             <Text style={styles.saveButtonText}>Сохранить телефон</Text>
           </Pressable>
+          {phoneStatus === 'saved' && <Text style={styles.statusSaved}>Сохранено</Text>}
+          {phoneStatus === 'invalid' && (
+            <Text style={styles.statusInvalid}>Проверьте номер</Text>
+          )}
 
           <Text style={styles.sectionLabel}>Лекарства</Text>
           {pills.length === 0 && (
@@ -159,6 +187,18 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: colors.onButton,
+  },
+  statusSaved: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.green,
+    marginTop: 10,
+  },
+  statusInvalid: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.amber,
+    marginTop: 10,
   },
   emptyText: {
     fontSize: 18,
