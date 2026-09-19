@@ -144,6 +144,17 @@ export function useDoseManager() {
 
   const escalate = useCallback(async (pill: Pill) => {
     if (activeAlarmRef.current?.pill.id !== pill.id) return;
+    // Re-read the persisted log: if the dose was confirmed in the meantime,
+    // write nothing and send nothing.
+    const today = todayDateString();
+    const existing = await getDoseLog();
+    if (
+      existing.some(
+        (e) => e.pillId === pill.id && e.date === today && e.status === 'taken'
+      )
+    ) {
+      return;
+    }
     setActiveAlarm((prev) =>
       prev && prev.pill.id === pill.id ? { ...prev, escalated: true } : prev
     );
@@ -310,7 +321,15 @@ export function useDoseManager() {
     const sub = addNotificationTapListener((pillId) => {
       if (activeAlarmRef.current?.pill.id === pillId) return;
       const pill = pillsRef.current.find((p) => p.id === pillId);
-      if (pill) activateAlarm(pill, todayOccurrence(pill.time, new Date()));
+      if (!pill) return;
+      getDoseLog().then((log) => {
+        const today = todayDateString();
+        const taken = log.some(
+          (e) => e.pillId === pill.id && e.date === today && e.status === 'taken'
+        );
+        if (taken) return;
+        activateAlarm(pill, todayOccurrence(pill.time, new Date()));
+      });
     });
     return () => sub.remove();
   }, [activateAlarm]);
