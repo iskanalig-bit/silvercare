@@ -12,6 +12,7 @@ import {
   logScheduledCount,
   resetAllNotifications,
   scheduleDoseReminders,
+  setAlarmScreenVisible,
 } from './notifications';
 import {
   addPill as addPillToStorage,
@@ -113,6 +114,7 @@ export function useDoseManager() {
   const activeAlarmRef = useRef<ActiveAlarm | null>(null);
   useEffect(() => {
     activeAlarmRef.current = activeAlarm;
+    setAlarmScreenVisible(activeAlarm !== null);
   }, [activeAlarm]);
 
   const pillsRef = useRef<Pill[]>([]);

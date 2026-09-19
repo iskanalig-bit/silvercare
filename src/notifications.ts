@@ -4,15 +4,23 @@ import { Platform } from 'react-native';
 
 import type { Pill } from './storage';
 
-const MAX_REMINDERS_PER_DOSE = 10; // dose-time notification + follow-ups, capped for iOS's 64-pending limit
-const REMINDER_INTERVAL_MINUTES = 1;
+const FOLLOWUP_COUNT = 5; // follow-up reminders after the dose-time one
+const REMINDER_INTERVAL_MINUTES = 2;
 const NOTIF_IDS_KEY = '@silvercare/notificationIds';
+
+// While the in-app alarm screen is showing, the OS notification would just
+// be redundant noise on top of the alarm's own speech/vibration/flash — so
+// it's delivered silently (still shows in the notification list/history).
+let alarmScreenVisible = false;
+export function setAlarmScreenVisible(visible: boolean): void {
+  alarmScreenVisible = visible;
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowBanner: true,
+    shouldShowBanner: !alarmScreenVisible,
     shouldShowList: true,
-    shouldPlaySound: true,
+    shouldPlaySound: !alarmScreenVisible,
     shouldSetBadge: false,
   }),
 });
@@ -100,8 +108,8 @@ export async function cancelAllForPill(pillId: string): Promise<void> {
   }
 }
 
-// Schedules the dose-time notification plus one-minute follow-ups (capped at
-// MAX_REMINDERS_PER_DOSE total). Idempotent: always cancels any reminders
+// Schedules the dose-time notification plus FOLLOWUP_COUNT follow-ups every
+// REMINDER_INTERVAL_MINUTES. Idempotent: always cancels any reminders
 // already scheduled for this exact dose slot first, so re-scheduling the
 // same dose (e.g. when its alarm fires) can never create duplicates.
 export async function scheduleDoseReminders(
@@ -113,7 +121,7 @@ export async function scheduleDoseReminders(
   await cancelDoseReminders(key);
 
   const ids: string[] = [];
-  for (let i = 0; i < MAX_REMINDERS_PER_DOSE; i++) {
+  for (let i = 0; i <= FOLLOWUP_COUNT; i++) {
     const fireDate = new Date(
       doseTime.getTime() + i * REMINDER_INTERVAL_MINUTES * 60 * 1000
     );
