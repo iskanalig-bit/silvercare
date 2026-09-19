@@ -7,6 +7,7 @@ export const colors = {
   border: '#DDE3E6',
   amber: '#8A5A00',
   onButton: '#FFFFFF',
+  placeholder: 'rgba(11, 31, 51, 0.45)', // text color at lower opacity
 } as const;
 
 export const typography = {

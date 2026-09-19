@@ -64,7 +64,7 @@ export function AddPillModal({ visible, onCancel, onSave }: AddPillModalProps) {
             <TextInput
               style={styles.input}
               placeholder="Например, Аспирин"
-              placeholderTextColor="#7C8A93"
+              placeholderTextColor={colors.placeholder}
               value={name}
               onChangeText={setName}
               autoCapitalize="sentences"
@@ -74,7 +74,7 @@ export function AddPillModal({ visible, onCancel, onSave }: AddPillModalProps) {
             <TextInput
               style={styles.input}
               placeholder="09:00"
-              placeholderTextColor="#7C8A93"
+              placeholderTextColor={colors.placeholder}
               value={time}
               onChangeText={setTime}
               keyboardType="numbers-and-punctuation"
