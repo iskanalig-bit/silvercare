@@ -377,7 +377,7 @@ export function useDoseManager() {
     }, 10_000);
   }, [activateAlarm]);
 
-  const todayCounts = getTodayCounts(doseLog);
+  const todayCounts = getTodayCounts(pills, doseLog);
   const nextPendingPill = getNextPendingPill(pills, doseLog);
 
   return {

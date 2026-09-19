@@ -125,13 +125,17 @@ export function getNextPendingPill(
   return [...pending].sort((a, b) => a.time.localeCompare(b.time))[0];
 }
 
+// total = every real (non-demo) pill scheduled today; taken = how many of
+// those have a "taken" entry for today. Demo pills never appear in `pills`,
+// so any demo log entries are ignored automatically.
 export function getTodayCounts(
+  pills: Pill[],
   log: DoseLogEntry[],
   date: string = todayDateString()
 ): { taken: number; total: number } {
-  const today = log.filter((e) => e.date === date);
-  return {
-    taken: today.filter((e) => e.status === 'taken').length,
-    total: today.length,
-  };
+  const total = pills.length;
+  const taken = pills.filter((p) =>
+    log.some((e) => e.pillId === p.id && e.date === date && e.status === 'taken')
+  ).length;
+  return { taken, total };
 }
