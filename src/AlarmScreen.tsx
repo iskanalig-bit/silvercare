@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
 import { useEffect, useRef } from 'react';
-import { Animated, Modal, StyleSheet, Text, Vibration, View } from 'react-native';
+import { Animated, Modal, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CircleButton } from './CircleButton';
@@ -13,10 +13,12 @@ const VIBRATION_INTERVAL_MS = 1_500;
 
 type AlarmScreenProps = {
   pill: Pill;
+  escalated: boolean;
   onConfirm: () => void;
+  onCall: () => void;
 };
 
-export function AlarmScreen({ pill, onConfirm }: AlarmScreenProps) {
+export function AlarmScreen({ pill, escalated, onConfirm, onCall }: AlarmScreenProps) {
   const flash = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -70,6 +72,22 @@ export function AlarmScreen({ pill, onConfirm }: AlarmScreenProps) {
               size={290}
             />
           </View>
+
+          {escalated && (
+            <View style={styles.escalation}>
+              <Text style={styles.escalationText}>
+                Родные оповещены о задержке приёма
+              </Text>
+              <Pressable
+                style={styles.callButton}
+                onPress={onCall}
+                accessibilityRole="button"
+                accessibilityLabel="Позвонить"
+              >
+                <Text style={styles.callButtonText}>📞 Позвонить</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       </SafeAreaView>
     </Modal>
@@ -110,5 +128,27 @@ const styles = StyleSheet.create({
   },
   confirmWrap: {
     marginBottom: 24,
+  },
+  escalation: {
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  escalationText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.amber,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  callButton: {
+    backgroundColor: colors.amber,
+    borderRadius: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 32,
+  },
+  callButtonText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.onButton,
   },
 });

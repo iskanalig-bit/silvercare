@@ -96,7 +96,9 @@ export function MainScreen() {
       {activeAlarm && (
         <AlarmScreen
           pill={activeAlarm.pill}
+          escalated={activeAlarm.escalated}
           onConfirm={() => confirmDose(activeAlarm.pill)}
+          onCall={callFamily}
         />
       )}
     </SafeAreaView>

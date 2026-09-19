@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
+import { ESCALATION_MINUTES } from './config';
 import { cancelDoseReminders, scheduleDoseReminders } from './notifications';
 import {
   addPill as addPillToStorage,
@@ -14,12 +15,14 @@ import {
   recordDose,
   todayDateString,
 } from './storage';
+import { sendMissedDoseAlert } from './telegram';
 
 const CHECK_INTERVAL_MS = 15_000;
 
 export type ActiveAlarm = {
   pill: Pill;
   scheduledAt: Date;
+  escalated: boolean;
 };
 
 // Returns today's occurrence of `time` ("HH:MM"), or tomorrow's if it has
@@ -71,12 +74,45 @@ export function useDoseManager() {
     notifIdsRef.current[pill.id] = ids;
   }, []);
 
+  // Timer that, unless cleared by a confirm, marks the dose missed and
+  // notifies the family once ESCALATION_MINUTES have passed.
+  const escalationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearEscalationTimer = useCallback(() => {
+    if (escalationTimerRef.current) {
+      clearTimeout(escalationTimerRef.current);
+      escalationTimerRef.current = null;
+    }
+  }, []);
+
+  const escalate = useCallback(async (pill: Pill) => {
+    if (activeAlarmRef.current?.pill.id !== pill.id) return;
+    setActiveAlarm((prev) =>
+      prev && prev.pill.id === pill.id ? { ...prev, escalated: true } : prev
+    );
+    const log = await recordDose({
+      pillId: pill.id,
+      pillName: pill.name,
+      date: todayDateString(),
+      time: pill.time,
+      status: 'missed',
+      at: new Date().toISOString(),
+    });
+    setDoseLog(log);
+    sendMissedDoseAlert(pill.name, pill.time).catch(() => {});
+  }, []);
+
   const activateAlarm = useCallback(
     async (pill: Pill, scheduledAt: Date) => {
       await scheduleAndTrack(pill, scheduledAt);
-      setActiveAlarm({ pill, scheduledAt });
+      setActiveAlarm({ pill, scheduledAt, escalated: false });
+      clearEscalationTimer();
+      escalationTimerRef.current = setTimeout(
+        () => escalate(pill),
+        ESCALATION_MINUTES * 60 * 1000
+      );
     },
-    [scheduleAndTrack]
+    [scheduleAndTrack, clearEscalationTimer, escalate]
   );
 
   const checkDue = useCallback(async () => {
@@ -126,8 +162,9 @@ export function useDoseManager() {
     return () => {
       clearInterval(interval);
       sub.remove();
+      clearEscalationTimer();
     };
-  }, [checkDue]);
+  }, [checkDue, clearEscalationTimer]);
 
   const addPill = useCallback(
     async (name: string, time: string) => {
@@ -157,10 +194,11 @@ export function useDoseManager() {
       setDoseLog(log);
       if (activeAlarmRef.current?.pill.id === pill.id) {
         setActiveAlarm(null);
+        clearEscalationTimer();
       }
       await scheduleAndTrack(pill, nextOccurrence(pill.time, new Date()));
     },
-    [scheduleAndTrack]
+    [scheduleAndTrack, clearEscalationTimer]
   );
 
   const confirmNextPendingDose = useCallback(async () => {
