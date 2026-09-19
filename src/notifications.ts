@@ -1,10 +1,12 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import type { Pill } from './storage';
 
-const REMINDER_COUNT = 10; // extra reminders, one per minute, after the dose time
+const MAX_REMINDERS_PER_DOSE = 10; // dose-time notification + follow-ups, capped for iOS's 64-pending limit
 const REMINDER_INTERVAL_MINUTES = 1;
+const NOTIF_IDS_KEY = '@silvercare/notificationIds';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -31,15 +33,67 @@ export async function configureNotifications(): Promise<void> {
   }
 }
 
-// Schedules the dose-time notification plus repeat nudges every minute for
-// REMINDER_COUNT minutes. Returns the ids so they can all be cancelled once
-// the dose is confirmed.
+// One dose slot = one pill on one calendar date ("HH:MM" comes from the pill
+// itself, so pillId + date is a unique key for "this pill's occurrence on
+// this day").
+export function doseKey(pillId: string, date: string): string {
+  return `${pillId}:${date}`;
+}
+
+async function getNotifIdMap(): Promise<Record<string, string[]>> {
+  const raw = await AsyncStorage.getItem(NOTIF_IDS_KEY);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, string[]>;
+  } catch {
+    return {};
+  }
+}
+
+async function writeNotifIdMap(map: Record<string, string[]>): Promise<void> {
+  await AsyncStorage.setItem(NOTIF_IDS_KEY, JSON.stringify(map));
+}
+
+async function setIdsForKey(key: string, ids: string[]): Promise<void> {
+  const map = await getNotifIdMap();
+  if (ids.length === 0) {
+    delete map[key];
+  } else {
+    map[key] = ids;
+  }
+  await writeNotifIdMap(map);
+}
+
+// Cancels whatever is currently scheduled for this dose slot (if anything)
+// and forgets its ids. Safe to call even if nothing was ever scheduled.
+export async function cancelDoseReminders(key: string): Promise<void> {
+  const map = await getNotifIdMap();
+  const ids = map[key] ?? [];
+  await Promise.all(
+    ids.map((id) =>
+      Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
+    )
+  );
+  if (ids.length > 0) {
+    delete map[key];
+    await writeNotifIdMap(map);
+  }
+}
+
+// Schedules the dose-time notification plus one-minute follow-ups (capped at
+// MAX_REMINDERS_PER_DOSE total). Idempotent: always cancels any reminders
+// already scheduled for this exact dose slot first, so re-scheduling the
+// same dose (e.g. when its alarm fires) can never create duplicates.
 export async function scheduleDoseReminders(
   pill: Pill,
-  doseTime: Date
+  doseTime: Date,
+  date: string
 ): Promise<string[]> {
+  const key = doseKey(pill.id, date);
+  await cancelDoseReminders(key);
+
   const ids: string[] = [];
-  for (let i = 0; i <= REMINDER_COUNT; i++) {
+  for (let i = 0; i < MAX_REMINDERS_PER_DOSE; i++) {
     const fireDate = new Date(
       doseTime.getTime() + i * REMINDER_INTERVAL_MINUTES * 60 * 1000
     );
@@ -62,13 +116,36 @@ export async function scheduleDoseReminders(
       // Ignore scheduling failures (e.g. unsupported in this environment).
     }
   }
+  await setIdsForKey(key, ids);
+  await logScheduledCount(`after scheduling ${pill.name}`);
   return ids;
 }
 
-export async function cancelDoseReminders(ids: string[]): Promise<void> {
-  await Promise.all(
-    ids.map((id) =>
-      Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
-    )
-  );
+// Wipes every OS-level scheduled notification and our own id map. Call once
+// on app start before re-scheduling from storage, so notifications orphaned
+// by a previous crash/reload/bug can never accumulate.
+export async function resetAllNotifications(): Promise<void> {
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+  } catch {
+    // ignore
+  }
+  await AsyncStorage.removeItem(NOTIF_IDS_KEY);
+}
+
+export async function dismissDeliveredNotifications(): Promise<void> {
+  try {
+    await Notifications.dismissAllNotificationsAsync();
+  } catch {
+    // ignore
+  }
+}
+
+export async function logScheduledCount(label: string): Promise<void> {
+  try {
+    const all = await Notifications.getAllScheduledNotificationsAsync();
+    console.log(`[SilverCare] scheduled notifications (${label}): ${all.length}`);
+  } catch {
+    // ignore
+  }
 }

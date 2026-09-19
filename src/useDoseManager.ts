@@ -1,8 +1,16 @@
+import * as Speech from 'expo-speech';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Vibration } from 'react-native';
 
 import { ESCALATION_MINUTES } from './config';
-import { cancelDoseReminders, scheduleDoseReminders } from './notifications';
+import {
+  cancelDoseReminders,
+  dismissDeliveredNotifications,
+  doseKey,
+  logScheduledCount,
+  resetAllNotifications,
+  scheduleDoseReminders,
+} from './notifications';
 import {
   addPill as addPillToStorage,
   DoseLogEntry,
@@ -37,6 +45,30 @@ function nextOccurrence(time: string, now: Date): Date {
   return candidate;
 }
 
+// Like nextOccurrence, but skips any day that's already logged "taken" for
+// this pill (covers confirming a dose before its scheduled time arrives,
+// where the naive next occurrence would still land on today).
+function nextUnresolvedOccurrence(
+  pill: Pill,
+  log: DoseLogEntry[],
+  now: Date
+): Date {
+  let occurrence = nextOccurrence(pill.time, now);
+  let guard = 0;
+  while (
+    guard++ < 7 &&
+    log.some(
+      (e) =>
+        e.pillId === pill.id &&
+        e.date === todayDateString(occurrence) &&
+        e.status === 'taken'
+    )
+  ) {
+    occurrence = new Date(occurrence.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return occurrence;
+}
+
 function todayOccurrence(time: string, now: Date): Date {
   const [h, m] = time.split(':').map(Number);
   const candidate = new Date(now);
@@ -65,13 +97,12 @@ export function useDoseManager() {
     doseLogRef.current = doseLog;
   }, [doseLog]);
 
-  // Notification ids currently scheduled for each pill's next occurrence, so
-  // they can be cancelled precisely once that dose is confirmed.
-  const notifIdsRef = useRef<Record<string, string[]>>({});
-
+  // scheduleDoseReminders is itself idempotent (cancels any reminders
+  // already scheduled for this exact pill+date before scheduling new ones),
+  // so calling this again for the same dose slot can never create
+  // duplicates or orphan old notification ids.
   const scheduleAndTrack = useCallback(async (pill: Pill, at: Date) => {
-    const ids = await scheduleDoseReminders(pill, at);
-    notifIdsRef.current[pill.id] = ids;
+    await scheduleDoseReminders(pill, at, todayDateString(at));
   }, []);
 
   // Timer that, unless cleared by a confirm, marks the dose missed and
@@ -143,12 +174,19 @@ export function useDoseManager() {
       setPills(loadedPills);
       setDoseLog(loadedLog);
       setFamilyPhoneState(phone);
-      // Make sure every pill has its next occurrence backed by a local
-      // notification, even after an app restart.
+
+      // Wipe every OS-level scheduled notification and our own id map, then
+      // reschedule only pills that don't already have a taken dose logged
+      // for their next occurrence. This guarantees a clean slate on every
+      // launch, so notifications orphaned by a previous bug/crash/reload
+      // can never accumulate.
+      await resetAllNotifications();
       const now = new Date();
       for (const pill of loadedPills) {
-        scheduleAndTrack(pill, nextOccurrence(pill.time, now));
+        const occurrence = nextUnresolvedOccurrence(pill, loadedLog, now);
+        await scheduleAndTrack(pill, occurrence);
       }
+      await logScheduledCount('app start');
     })();
   }, [scheduleAndTrack]);
 
@@ -170,33 +208,48 @@ export function useDoseManager() {
     async (name: string, time: string) => {
       const pill = await addPillToStorage(name, time);
       setPills((prev) => [...prev, pill]);
-      await scheduleAndTrack(pill, nextOccurrence(time, new Date()));
+      await scheduleAndTrack(
+        pill,
+        nextUnresolvedOccurrence(pill, doseLogRef.current, new Date())
+      );
       return pill;
     },
     [scheduleAndTrack]
   );
 
   // Confirms a dose whether or not its alarm is currently showing: cancels
-  // its pending reminders, logs it as taken, clears a matching active alarm,
-  // and schedules the pill's following occurrence.
+  // every reminder scheduled for today's slot, dismisses any already
+  // delivered, stops the alarm's speech/vibration, logs the dose as taken,
+  // clears a matching active alarm + its escalation timer, and schedules the
+  // pill's following occurrence.
   const confirmDose = useCallback(
     async (pill: Pill) => {
-      const ids = notifIdsRef.current[pill.id] ?? [];
-      await cancelDoseReminders(ids);
+      const today = todayDateString();
+      await cancelDoseReminders(doseKey(pill.id, today));
+      await dismissDeliveredNotifications();
+      Speech.stop();
+      Vibration.cancel();
+
       const log = await recordDose({
         pillId: pill.id,
         pillName: pill.name,
-        date: todayDateString(),
+        date: today,
         time: pill.time,
         status: 'taken',
         at: new Date().toISOString(),
       });
       setDoseLog(log);
+
       if (activeAlarmRef.current?.pill.id === pill.id) {
         setActiveAlarm(null);
         clearEscalationTimer();
       }
-      await scheduleAndTrack(pill, nextOccurrence(pill.time, new Date()));
+
+      await scheduleAndTrack(
+        pill,
+        nextUnresolvedOccurrence(pill, log, new Date())
+      );
+      await logScheduledCount('after confirm');
     },
     [scheduleAndTrack, clearEscalationTimer]
   );
