@@ -107,16 +107,43 @@ export async function clearPillsAndLog(): Promise<void> {
   await AsyncStorage.multiRemove([PILLS_KEY, DOSE_LOG_KEY]);
 }
 
+export function todayOccurrence(time: string, now: Date = new Date()): Date {
+  const [h, m] = time.split(':').map(Number);
+  const candidate = new Date(now);
+  candidate.setHours(h, m, 0, 0);
+  return candidate;
+}
+
+// A pill whose time today is earlier than the moment it was created is NOT a
+// slot for today (added at 14:00 for "09:00" → first real slot is tomorrow).
+// Pills saved before createdAt existed count as real slots.
+export function isTodaySlot(pill: Pill, now: Date = new Date()): boolean {
+  return todayOccurrence(pill.time, now).getTime() >= (pill.createdAt ?? 0);
+}
+
+// The earliest pill whose first slot is tomorrow (see isTodaySlot).
+export function getNextTomorrowPill(
+  pills: Pill[],
+  now: Date = new Date()
+): Pill | null {
+  const stale = pills.filter((p) => !isTodaySlot(p, now));
+  if (stale.length === 0) return null;
+  return [...stale].sort((a, b) => a.time.localeCompare(b.time))[0];
+}
+
 // The soonest pill for today that hasn't been logged as taken yet, sorted by
 // scheduled time. Used both for the main screen's dose card and for the
 // "Принял(а)" shortcut that lets a user log a dose before its alarm fires.
+// Pills that have no slot today (isTodaySlot) are ignored.
 export function getNextPendingPill(
   pills: Pill[],
   log: DoseLogEntry[],
   date: string = todayDateString()
 ): Pill | null {
+  const now = new Date();
   const pending = pills.filter(
     (p) =>
+      isTodaySlot(p, now) &&
       !log.some(
         (e) => e.pillId === p.id && e.date === date && e.status === 'taken'
       )
@@ -133,8 +160,9 @@ export function getTodayCounts(
   log: DoseLogEntry[],
   date: string = todayDateString()
 ): { taken: number; total: number } {
-  const total = pills.length;
-  const taken = pills.filter((p) =>
+  const slots = pills.filter((p) => isTodaySlot(p));
+  const total = slots.length;
+  const taken = slots.filter((p) =>
     log.some((e) => e.pillId === p.id && e.date === date && e.status === 'taken')
   ).length;
   return { taken, total };

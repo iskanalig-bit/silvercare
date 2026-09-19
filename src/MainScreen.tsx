@@ -30,6 +30,7 @@ export function MainScreen() {
     pills,
     todayCounts,
     nextPendingPill,
+    nextTomorrowPill,
     familyPhone,
     activeAlarm,
     banner,
@@ -63,7 +64,9 @@ export function MainScreen() {
 
   const doseCardText = nextPendingPill
     ? `${nextPendingPill.time} · ${nextPendingPill.name}`
-    : 'На сегодня всё принято';
+    : nextTomorrowPill
+      ? `Завтра ${nextTomorrowPill.time} · ${nextTomorrowPill.name}`
+      : 'На сегодня всё принято';
 
   // Circle diameters are fixed (never shrink below 190/210) — only the
   // spacing between them flexes, overlapping (negative margin) instead of

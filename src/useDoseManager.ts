@@ -22,12 +22,15 @@ import {
   getDoseLog,
   getFamilyPhone,
   getNextPendingPill,
+  getNextTomorrowPill,
   getPills,
   getTodayCounts,
+  isTodaySlot,
   Pill,
   recordDose,
   setFamilyPhone as setFamilyPhoneInStorage,
   todayDateString,
+  todayOccurrence,
 } from './storage';
 import { sendLateDoseAlert, sendMissedDoseAlert } from './telegram';
 
@@ -84,13 +87,6 @@ function nextUnresolvedOccurrence(
     occurrence = new Date(occurrence.getTime() + 24 * 60 * 60 * 1000);
   }
   return occurrence;
-}
-
-function todayOccurrence(time: string, now: Date): Date {
-  const [h, m] = time.split(':').map(Number);
-  const candidate = new Date(now);
-  candidate.setHours(h, m, 0, 0);
-  return candidate;
 }
 
 export function useDoseManager() {
@@ -183,9 +179,9 @@ export function useDoseManager() {
     for (const pill of pillsRef.current) {
       const scheduled = todayOccurrence(pill.time, now);
       if (scheduled.getTime() > now.getTime()) continue;
-      // A slot earlier than the pill's own creation time is stale (e.g. the
-      // pill was added at 14:00 for a 09:00 time) — never fire for it.
-      if (scheduled.getTime() < pill.createdAt) continue;
+      // A slot earlier than the pill's own creation time isn't a slot for
+      // today (pill added at 14:00 for 09:00) — never fire for it.
+      if (!isTodaySlot(pill, now)) continue;
       const alreadyLogged = doseLogRef.current.some(
         (e) =>
           e.pillId === pill.id && e.date === today && e.time === pill.time
@@ -333,8 +329,14 @@ export function useDoseManager() {
     }
     const pending = getNextPendingPill(pillsRef.current, doseLogRef.current);
     if (!pending) {
-      Speech.speak(NOTHING_PENDING_SPEECH, { language: 'ru-RU' });
-      showBanner(NOTHING_PENDING_SPEECH, 'info');
+      // Nothing left today. A pill with no slot today (added after its time)
+      // is not confirmable — say when it's next due instead.
+      const tomorrow = getNextTomorrowPill(pillsRef.current);
+      const text = tomorrow
+        ? `Ещё рано. Следующий приём завтра в ${tomorrow.time}`
+        : NOTHING_PENDING_SPEECH;
+      Speech.speak(text, { language: 'ru-RU' });
+      showBanner(text, 'info');
       return;
     }
     const now = new Date();
@@ -397,12 +399,14 @@ export function useDoseManager() {
 
   const todayCounts = getTodayCounts(pills, doseLog);
   const nextPendingPill = getNextPendingPill(pills, doseLog);
+  const nextTomorrowPill = getNextTomorrowPill(pills);
 
   return {
     pills,
     doseLog,
     todayCounts,
     nextPendingPill,
+    nextTomorrowPill,
     familyPhone,
     activeAlarm,
     banner,
