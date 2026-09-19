@@ -1,18 +1,46 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Linking from 'expo-linking';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AddPillModal } from './AddPillModal';
+import { AlarmScreen } from './AlarmScreen';
 import { CircleButton } from './CircleButton';
 import { colors } from './theme';
+import { useDoseManager } from './useDoseManager';
 
 export function MainScreen() {
+  const {
+    todayCounts,
+    nextPendingPill,
+    familyPhone,
+    activeAlarm,
+    addPill,
+    confirmDose,
+    confirmNextPendingDose,
+    triggerDemoAlarm,
+  } = useDoseManager();
+
+  const [addModalVisible, setAddModalVisible] = useState(false);
+
+  const callFamily = () => {
+    Linking.openURL(`tel:${familyPhone}`).catch(() => {});
+  };
+
+  const doseCardText = nextPendingPill
+    ? `${nextPendingPill.time}, ${nextPendingPill.name}`
+    : 'На сегодня всё принято';
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Мои лекарства</Text>
+        <Pressable onLongPress={triggerDemoAlarm} delayLongPress={1200}>
+          <Text style={styles.title}>Мои лекарства</Text>
+        </Pressable>
 
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Следующий приём:</Text>
-          <Text style={styles.cardValue}>09:00, Аспирин</Text>
+          <Text style={styles.cardValue}>{doseCardText}</Text>
         </View>
 
         <View style={[styles.circleRow, styles.alignStart]}>
@@ -20,7 +48,7 @@ export function MainScreen() {
             icon="✅"
             label="Принял(а)"
             backgroundColor={colors.green}
-            onPress={() => {}}
+            onPress={confirmNextPendingDose}
           />
         </View>
 
@@ -38,16 +66,39 @@ export function MainScreen() {
             icon="📞"
             label="Позвонить семье"
             backgroundColor={colors.text}
-            onPress={() => {}}
+            onPress={callFamily}
           />
         </View>
 
-        <View style={styles.addButton}>
+        <Pressable
+          style={styles.addButton}
+          onPress={() => setAddModalVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Добавить лекарство"
+        >
           <Text style={styles.addButtonText}>+ Добавить лекарство</Text>
-        </View>
+        </Pressable>
 
-        <Text style={styles.counter}>Сегодня: принято 0 из 0</Text>
+        <Text style={styles.counter}>
+          Сегодня: принято {todayCounts.taken} из {todayCounts.total}
+        </Text>
       </ScrollView>
+
+      <AddPillModal
+        visible={addModalVisible}
+        onCancel={() => setAddModalVisible(false)}
+        onSave={(name, time) => {
+          addPill(name, time);
+          setAddModalVisible(false);
+        }}
+      />
+
+      {activeAlarm && (
+        <AlarmScreen
+          pill={activeAlarm.pill}
+          onConfirm={() => confirmDose(activeAlarm.pill)}
+        />
+      )}
     </SafeAreaView>
   );
 }
