@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AddPillModal } from './AddPillModal';
 import { AlarmScreen } from './AlarmScreen';
 import { CircleButton } from './CircleButton';
+import { MemoryGameModal } from './MemoryGameModal';
 import { colors } from './theme';
 import { useDoseManager } from './useDoseManager';
 
@@ -22,6 +23,7 @@ export function MainScreen() {
   } = useDoseManager();
 
   const [addModalVisible, setAddModalVisible] = useState(false);
+  const [memoryModalVisible, setMemoryModalVisible] = useState(false);
 
   const callFamily = () => {
     Linking.openURL(`tel:${familyPhone}`).catch(() => {});
@@ -57,7 +59,7 @@ export function MainScreen() {
             icon="🧠"
             label="Память"
             backgroundColor={colors.blue}
-            onPress={() => {}}
+            onPress={() => setMemoryModalVisible(true)}
           />
         </View>
 
@@ -91,6 +93,11 @@ export function MainScreen() {
           addPill(name, time);
           setAddModalVisible(false);
         }}
+      />
+
+      <MemoryGameModal
+        visible={memoryModalVisible}
+        onClose={() => setMemoryModalVisible(false)}
       />
 
       {activeAlarm && (
