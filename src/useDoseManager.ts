@@ -184,7 +184,10 @@ export function useDoseManager() {
   );
 
   const checkDue = useCallback(async () => {
-    if (activeAlarmRef.current) return;
+    // A fresh alarm blocks checking, but an escalated one (family already
+    // notified, dose logged "missed") must not — other pills still alarm.
+    // The escalated pill itself is skipped below via its "missed" log entry.
+    if (activeAlarmRef.current && !activeAlarmRef.current.escalated) return;
     const now = new Date();
     const today = todayDateString(now);
     for (const pill of pillsRef.current) {

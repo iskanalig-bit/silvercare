@@ -25,11 +25,12 @@ Plain React Native (no expo-router), Expo Go only, AsyncStorage only, no backend
 - Circle button labels ≥26sp; card label/counter/add-button text ≥22sp.
 
 ## Data model (`src/storage.ts`)
-- `Pill { id, name, time: "HH:MM", createdAt }`. `createdAt` exists so a
-  pill added at 14:00 for "09:00" doesn't immediately count as overdue —
-  `checkDue()` skips any slot earlier than `pill.createdAt`. Demo pills
-  bypass `checkDue` entirely (go straight through `activateAlarm`), so
-  they're exempt.
+- `Pill { id, name, time: "HH:MM", createdAt }`. A pill whose time today is
+  earlier than `createdAt` is NOT a slot for today (`isTodaySlot` in
+  storage.ts): `getNextPendingPill`, `getTodayCounts`, `checkDue` and
+  `confirmMainButtonDose` all ignore it, and the card shows
+  "Завтра HH:MM · name". Demo pills bypass `checkDue` (straight into
+  `activateAlarm`), so they're exempt.
 - `DoseLogEntry` keyed by `${pillId}:${date}:${time}`, status `taken|missed`.
   `recordDose()` never downgrades an existing `taken` entry.
 - `getTodayCounts(pills, log)`: total = number of real pills (demo pills
@@ -74,6 +75,12 @@ oldest overdue/soonest-upcoming pending pill, but **only if it's due,
 overdue, or within 60 minutes of its time** — otherwise it speaks/shows
 "Ещё рано. Следующий приём в HH:MM" and logs nothing; if nothing is pending
 today it says "На сегодня всё принято" and logs nothing either.
+
+## Alarms
+- `escalate()` re-reads the persisted log and does nothing if the dose is
+  already taken today. A notification tap for an already-taken dose does nothing.
+- An escalated alarm (family notified, dose logged missed) does NOT block
+  `checkDue` — other pills still alarm and replace it on screen.
 
 ## Escalation & Telegram (`src/config.ts`, `src/telegram.ts`)
 - `ESCALATION_MINUTES` = 1 in `DEMO_MODE`, else 10. Flip `DEMO_MODE` for

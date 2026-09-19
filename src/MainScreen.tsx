@@ -206,6 +206,7 @@ export function MainScreen() {
 
       {activeAlarm && (
         <AlarmScreen
+          key={activeAlarm.pill.id}
           pill={activeAlarm.pill}
           escalated={activeAlarm.escalated}
           onConfirm={() => confirmDose(activeAlarm.pill)}
