@@ -80,6 +80,26 @@ export async function cancelDoseReminders(key: string): Promise<void> {
   }
 }
 
+// Cancels every scheduled reminder for a pill regardless of which date it's
+// currently tracked under (a pill only ever has one active dose slot at a
+// time, but we don't want to have to know which date that is). Used when a
+// pill is deleted entirely.
+export async function cancelAllForPill(pillId: string): Promise<void> {
+  const map = await getNotifIdMap();
+  const prefix = `${pillId}:`;
+  const keys = Object.keys(map).filter((k) => k.startsWith(prefix));
+  const ids = keys.flatMap((k) => map[k]);
+  await Promise.all(
+    ids.map((id) =>
+      Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
+    )
+  );
+  if (keys.length > 0) {
+    for (const k of keys) delete map[k];
+    await writeNotifIdMap(map);
+  }
+}
+
 // Schedules the dose-time notification plus one-minute follow-ups (capped at
 // MAX_REMINDERS_PER_DOSE total). Idempotent: always cancels any reminders
 // already scheduled for this exact dose slot first, so re-scheduling the

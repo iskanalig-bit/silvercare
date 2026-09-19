@@ -5,6 +5,7 @@ import { AppState, Vibration } from 'react-native';
 import { ESCALATION_MINUTES } from './config';
 import {
   addNotificationTapListener,
+  cancelAllForPill,
   cancelDoseReminders,
   dismissDeliveredNotifications,
   doseKey,
@@ -14,6 +15,8 @@ import {
 } from './notifications';
 import {
   addPill as addPillToStorage,
+  clearPillsAndLog,
+  deletePillData,
   DoseLogEntry,
   getDoseLog,
   getFamilyPhone,
@@ -22,6 +25,7 @@ import {
   getTodayCounts,
   Pill,
   recordDose,
+  setFamilyPhone as setFamilyPhoneInStorage,
   todayDateString,
 } from './storage';
 import { sendMissedDoseAlert } from './telegram';
@@ -90,7 +94,7 @@ function todayOccurrence(time: string, now: Date): Date {
 export function useDoseManager() {
   const [pills, setPills] = useState<Pill[]>([]);
   const [doseLog, setDoseLog] = useState<DoseLogEntry[]>([]);
-  const [familyPhone, setFamilyPhoneState] = useState<string>('');
+  const [familyPhone, setFamilyPhoneState] = useState<string | null>(null);
   const [activeAlarm, setActiveAlarm] = useState<ActiveAlarm | null>(null);
   const [banner, setBanner] = useState<ConfirmBanner | null>(null);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -327,6 +331,34 @@ export function useDoseManager() {
     showBanner(NOTHING_PENDING_SPEECH, 'info');
   }, [confirmDose, showBanner]);
 
+  const saveFamilyPhone = useCallback(async (phone: string) => {
+    await setFamilyPhoneInStorage(phone);
+    setFamilyPhoneState(phone);
+  }, []);
+
+  const deletePill = useCallback(
+    async (pillId: string) => {
+      await cancelAllForPill(pillId);
+      const { pills: nextPills, log: nextLog } = await deletePillData(pillId);
+      setPills(nextPills);
+      setDoseLog(nextLog);
+      if (activeAlarmRef.current?.pill.id === pillId) {
+        setActiveAlarm(null);
+        clearEscalationTimer();
+      }
+    },
+    [clearEscalationTimer]
+  );
+
+  const resetAllData = useCallback(async () => {
+    await resetAllNotifications();
+    await clearPillsAndLog();
+    setPills([]);
+    setDoseLog([]);
+    setActiveAlarm(null);
+    clearEscalationTimer();
+  }, [clearEscalationTimer]);
+
   const triggerDemoAlarm = useCallback(() => {
     setTimeout(() => {
       if (activeAlarmRef.current) return;
@@ -357,6 +389,9 @@ export function useDoseManager() {
     activeAlarm,
     banner,
     addPill,
+    deletePill,
+    saveFamilyPhone,
+    resetAllData,
     confirmDose,
     confirmMainButtonDose,
     triggerDemoAlarm,

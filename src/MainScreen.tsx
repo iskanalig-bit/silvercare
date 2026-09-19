@@ -15,6 +15,7 @@ import { AddPillModal } from './AddPillModal';
 import { AlarmScreen } from './AlarmScreen';
 import { CircleButton } from './CircleButton';
 import { MemoryGameModal } from './MemoryGameModal';
+import { SettingsModal } from './SettingsModal';
 import { colors } from './theme';
 import { useDoseManager } from './useDoseManager';
 
@@ -29,12 +30,16 @@ function clamp(value: number, min: number, max: number): number {
 
 export function MainScreen() {
   const {
+    pills,
     todayCounts,
     nextPendingPill,
     familyPhone,
     activeAlarm,
     banner,
     addPill,
+    deletePill,
+    saveFamilyPhone,
+    resetAllData,
     confirmDose,
     confirmMainButtonDose,
     triggerDemoAlarm,
@@ -43,6 +48,7 @@ export function MainScreen() {
   const { width } = useWindowDimensions();
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [memoryModalVisible, setMemoryModalVisible] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
   const [cluster, setCluster] = useState({ width: 0, height: 0 });
 
   const onClusterLayout = (e: LayoutChangeEvent) => {
@@ -51,6 +57,10 @@ export function MainScreen() {
   };
 
   const callFamily = () => {
+    if (!familyPhone) {
+      setSettingsVisible(true);
+      return;
+    }
     Linking.openURL(`tel:${familyPhone}`).catch(() => {});
   };
 
@@ -90,6 +100,7 @@ export function MainScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.root}>
         <Pressable
+          onPress={() => setSettingsVisible(true)}
           onLongPress={triggerDemoAlarm}
           delayLongPress={1200}
           hitSlop={8}
@@ -183,6 +194,16 @@ export function MainScreen() {
       <MemoryGameModal
         visible={memoryModalVisible}
         onClose={() => setMemoryModalVisible(false)}
+      />
+
+      <SettingsModal
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
+        familyPhone={familyPhone}
+        onSaveFamilyPhone={saveFamilyPhone}
+        pills={pills}
+        onDeletePill={deletePill}
+        onResetData={resetAllData}
       />
 
       {activeAlarm && (

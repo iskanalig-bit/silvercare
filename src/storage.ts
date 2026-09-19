@@ -24,8 +24,6 @@ const PILLS_KEY = '@silvercare/pills';
 const FAMILY_PHONE_KEY = '@silvercare/familyPhone';
 const DOSE_LOG_KEY = '@silvercare/doseLog';
 
-export const DEFAULT_FAMILY_PHONE = '+70000000000';
-
 export function todayDateString(date: Date = new Date()): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -54,9 +52,9 @@ export async function addPill(name: string, time: string): Promise<Pill> {
   return pill;
 }
 
-export async function getFamilyPhone(): Promise<string> {
-  const raw = await AsyncStorage.getItem(FAMILY_PHONE_KEY);
-  return raw ?? DEFAULT_FAMILY_PHONE;
+// No fake default: null means the family hasn't set a number yet.
+export async function getFamilyPhone(): Promise<string | null> {
+  return AsyncStorage.getItem(FAMILY_PHONE_KEY);
 }
 
 export async function setFamilyPhone(phone: string): Promise<void> {
@@ -88,6 +86,25 @@ export async function recordDose(
   next.push({ ...entry, id });
   await AsyncStorage.setItem(DOSE_LOG_KEY, JSON.stringify(next));
   return next;
+}
+
+// Removes a pill and every log entry that belongs to it. Notification
+// cancellation is handled separately (src/notifications.ts) since this
+// module doesn't know about scheduled notification ids.
+export async function deletePillData(
+  pillId: string
+): Promise<{ pills: Pill[]; log: DoseLogEntry[] }> {
+  const pills = (await getPills()).filter((p) => p.id !== pillId);
+  await savePills(pills);
+  const log = (await getDoseLog()).filter((e) => e.pillId !== pillId);
+  await AsyncStorage.setItem(DOSE_LOG_KEY, JSON.stringify(log));
+  return { pills, log };
+}
+
+// "Сбросить данные": wipes every pill and every log entry (family phone is
+// left untouched — it's contact info, not dose data).
+export async function clearPillsAndLog(): Promise<void> {
+  await AsyncStorage.multiRemove([PILLS_KEY, DOSE_LOG_KEY]);
 }
 
 // The soonest pill for today that hasn't been logged as taken yet, sorted by
