@@ -176,6 +176,9 @@ export function useDoseManager() {
     for (const pill of pillsRef.current) {
       const scheduled = todayOccurrence(pill.time, now);
       if (scheduled.getTime() > now.getTime()) continue;
+      // A slot earlier than the pill's own creation time is stale (e.g. the
+      // pill was added at 14:00 for a 09:00 time) — never fire for it.
+      if (scheduled.getTime() < pill.createdAt) continue;
       const alreadyLogged = doseLogRef.current.some(
         (e) =>
           e.pillId === pill.id && e.date === today && e.time === pill.time
@@ -334,7 +337,10 @@ export function useDoseManager() {
         id: `demo-${now.getTime()}`,
         name: 'Демо-лекарство',
         time: `${hh}:${mm}`,
+        createdAt: now.getTime(),
       };
+      // Demo pills go straight through activateAlarm, never through
+      // checkDue, so the createdAt staleness check never applies to them.
       activateAlarm(demoPill, now);
     }, 10_000);
   }, [activateAlarm]);

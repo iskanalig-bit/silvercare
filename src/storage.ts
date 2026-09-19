@@ -4,6 +4,8 @@ export type Pill = {
   id: string;
   name: string;
   time: string; // "HH:MM", 24h
+  createdAt: number; // Date.now() when added — a time slot earlier than this
+  // on the day the pill was added is stale and should never fire
 };
 
 export type DoseStatus = 'taken' | 'missed';
@@ -47,7 +49,7 @@ export async function savePills(pills: Pill[]): Promise<void> {
 
 export async function addPill(name: string, time: string): Promise<Pill> {
   const pills = await getPills();
-  const pill: Pill = { id: `${Date.now()}`, name, time };
+  const pill: Pill = { id: `${Date.now()}`, name, time, createdAt: Date.now() };
   await savePills([...pills, pill]);
   return pill;
 }
