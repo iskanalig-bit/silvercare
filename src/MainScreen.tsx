@@ -20,13 +20,10 @@ import { colors } from './theme';
 import { useDoseManager } from './useDoseManager';
 
 const GAP = 8;
-const TOP_CIRCLE_MAX = 210;
-const BOTTOM_CIRCLE_MAX = 190;
-const CIRCLE_MIN = 150;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
+const TOP_CIRCLE_SIZE = 210;
+const BOTTOM_CIRCLE_SIZE = 190; // circle minimum — circles never shrink below
+// this; on a screen too small to fit them with the normal 8px gap, they
+// overlap (negative margin) instead.
 
 export function MainScreen() {
   const {
@@ -68,33 +65,24 @@ export function MainScreen() {
     ? `${nextPendingPill.time} · ${nextPendingPill.name}`
     : 'На сегодня всё принято';
 
-  // Bottom circles: sized from screen width, floored at 150 (never smaller —
-  // slight horizontal overlap is preferred over shrinking further).
-  const rawBottomFromWidth = (width - 24) / 2;
-  let topSize = TOP_CIRCLE_MAX;
-  let bottomSize = clamp(rawBottomFromWidth, CIRCLE_MIN, BOTTOM_CIRCLE_MAX);
+  // Circle diameters are fixed (never shrink below 190/210) — only the
+  // spacing between them flexes, overlapping (negative margin) instead of
+  // shrinking further when the screen is too small for the normal 8px gap.
+  const topSize = TOP_CIRCLE_SIZE;
+  const bottomSize = BOTTOM_CIRCLE_SIZE;
 
-  // Fit the vertical stack (top circle + gap + bottom row) into the measured
-  // cluster height so the screen never needs to scroll.
-  if (cluster.height > 0) {
-    const availForSizes = Math.max(0, cluster.height - GAP);
-    if (topSize + bottomSize > availForSizes) {
-      const scale = availForSizes / (topSize + bottomSize);
-      topSize *= scale;
-      bottomSize *= scale;
-      if (bottomSize < CIRCLE_MIN && availForSizes >= CIRCLE_MIN) {
-        bottomSize = CIRCLE_MIN;
-        topSize = Math.max(0, availForSizes - bottomSize);
-      }
-    }
-  }
-
-  // Bottom row: 8px gap normally; if the two circles don't fit the measured
-  // cluster width, overlap them slightly instead of shrinking below 150.
   const clusterWidth = cluster.width || width - 32;
   const idealRowWidth = bottomSize * 2 + GAP;
   const halfGapMargin =
     idealRowWidth > clusterWidth ? (clusterWidth - idealRowWidth) / 2 : GAP / 2;
+
+  let verticalGap = GAP;
+  if (cluster.height > 0) {
+    const idealColumnHeight = topSize + GAP + bottomSize;
+    if (idealColumnHeight > cluster.height) {
+      verticalGap = GAP - (idealColumnHeight - cluster.height);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
@@ -120,7 +108,7 @@ export function MainScreen() {
         </View>
 
         <View style={styles.cluster} onLayout={onClusterLayout}>
-          <View style={{ marginBottom: GAP }}>
+          <View style={{ marginBottom: verticalGap }}>
             <CircleButton
               icon="checkmark-circle-outline"
               label="Принял(а)"
@@ -239,16 +227,17 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.panel,
     borderRadius: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: 18,
     marginBottom: 12,
     maxHeight: 110,
     justifyContent: 'center',
   },
   cardLabel: {
-    fontSize: 14,
+    fontSize: 22,
+    lineHeight: 26,
     color: colors.text,
-    marginBottom: 2,
+    marginBottom: 0,
   },
   cardValue: {
     fontSize: 28,
@@ -257,9 +246,10 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   cardCounter: {
-    fontSize: 14,
+    fontSize: 22,
+    lineHeight: 26,
     color: colors.text,
-    marginTop: 4,
+    marginTop: 2,
   },
   cluster: {
     flex: 1,
@@ -275,7 +265,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   addButtonText: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '600',
     color: colors.blue,
   },
