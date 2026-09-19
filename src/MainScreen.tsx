@@ -104,7 +104,14 @@ export function MainScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Следующий приём</Text>
-          <Text style={styles.cardValue}>{doseCardText}</Text>
+          <Text
+            style={styles.cardValue}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+          >
+            {doseCardText}
+          </Text>
           <Text style={styles.cardCounter}>
             Сегодня: принято {todayCounts.taken} из {todayCounts.total}
           </Text>
@@ -233,7 +240,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 18,
     marginBottom: 12,
-    maxHeight: 110,
     justifyContent: 'center',
   },
   cardLabel: {
