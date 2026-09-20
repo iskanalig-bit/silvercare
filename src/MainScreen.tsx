@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   LayoutChangeEvent,
   Pressable,
@@ -24,6 +24,11 @@ const TOP_CIRCLE_SIZE = 210;
 const BOTTOM_CIRCLE_SIZE = 190; // circle minimum — circles never shrink below
 // this; on a screen too small to fit them with the normal 8px gap, they
 // overlap (negative margin) instead.
+
+// iOS can't present two modals at once: when an alarm starts while another
+// modal is open we close that one first and give its dismiss animation this
+// long to finish before presenting the alarm.
+const MODAL_DISMISS_MS = 400;
 
 export function MainScreen() {
   const {
@@ -54,12 +59,50 @@ export function MainScreen() {
     setCluster({ width: w, height: h });
   };
 
+  const hasAlarm = activeAlarm !== null;
+  const [alarmReady, setAlarmReady] = useState(false);
+
+  // When an alarm becomes active, close every other modal first and only
+  // present the alarm after the dismiss animation has finished. (If nothing
+  // was open there's nothing to wait for.)
+  useEffect(() => {
+    if (!hasAlarm) {
+      setAlarmReady(false);
+      return;
+    }
+    const anyOpen = addModalVisible || memoryModalVisible || settingsVisible;
+    setAddModalVisible(false);
+    setMemoryModalVisible(false);
+    setSettingsVisible(false);
+    if (!anyOpen) {
+      setAlarmReady(true);
+      return;
+    }
+    const timer = setTimeout(() => setAlarmReady(true), MODAL_DISMISS_MS);
+    return () => clearTimeout(timer);
+    // Only the null → alarm transition matters; the modal flags are read as
+    // they were at that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasAlarm]);
+
+  // While an alarm is pending/showing, don't let a tap open another modal
+  // (it would collide with the alarm's presentation).
+  const openModal = (open: () => void) => {
+    if (hasAlarm) return;
+    open();
+  };
+
+  const dialFamily = () => {
+    if (familyPhone) Linking.openURL(`tel:${familyPhone}`).catch(() => {});
+  };
+
   const callFamily = () => {
+    if (hasAlarm) return;
     if (!familyPhone) {
       setSettingsVisible(true);
       return;
     }
-    Linking.openURL(`tel:${familyPhone}`).catch(() => {});
+    dialFamily();
   };
 
   const doseCardText = nextPendingPill
@@ -91,7 +134,7 @@ export function MainScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.root}>
         <Pressable
-          onPress={() => setSettingsVisible(true)}
+          onPress={() => openModal(() => setSettingsVisible(true))}
           onLongPress={triggerDemoAlarm}
           delayLongPress={1200}
           hitSlop={8}
@@ -135,7 +178,7 @@ export function MainScreen() {
                 label="Память"
                 backgroundColor={colors.blue}
                 size={bottomSize}
-                onPress={() => setMemoryModalVisible(true)}
+                onPress={() => openModal(() => setMemoryModalVisible(true))}
               />
             </View>
             <View style={{ marginHorizontal: halfGapMargin }}>
@@ -152,7 +195,7 @@ export function MainScreen() {
 
         <Pressable
           style={styles.addButton}
-          onPress={() => setAddModalVisible(true)}
+          onPress={() => openModal(() => setAddModalVisible(true))}
           hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel="Добавить лекарство"
@@ -204,13 +247,13 @@ export function MainScreen() {
         onResetData={resetAllData}
       />
 
-      {activeAlarm && (
+      {activeAlarm && alarmReady && (
         <AlarmScreen
-          key={activeAlarm.pill.id}
           pill={activeAlarm.pill}
           escalated={activeAlarm.escalated}
+          familyPhone={familyPhone}
           onConfirm={() => confirmDose(activeAlarm.pill)}
-          onCall={callFamily}
+          onCall={dialFamily}
         />
       )}
     </SafeAreaView>

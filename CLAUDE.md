@@ -79,6 +79,11 @@ today it says "На сегодня всё принято" and logs nothing eithe
 ## Alarms
 - `escalate()` re-reads the persisted log and does nothing if the dose is
   already taken today. A notification tap for an already-taken dose does nothing.
+- iOS can't present two modals at once. When an alarm starts, MainScreen
+  closes every other modal, waits ~400ms (only if one was open), then shows
+  AlarmScreen; no modal may be opened while an alarm is pending. AlarmScreen
+  starts speech/vibration/flash from the Modal's `onShow`, and never opens
+  Settings (unset family phone → an on-screen hint instead).
 - An escalated alarm (family notified, dose logged missed) does NOT block
   `checkDue` — other pills still alarm and replace it on screen.
 

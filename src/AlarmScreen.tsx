@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Modal, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -10,18 +10,38 @@ import { colors } from './theme';
 
 const SPEECH_INTERVAL_MS = 8_000;
 const VIBRATION_INTERVAL_MS = 1_500;
+// Safety net: if the Modal's onShow never fires, start the alarm anyway
+// rather than leaving a due dose completely silent.
+const SHOW_FALLBACK_MS = 2_000;
 
 type AlarmScreenProps = {
   pill: Pill;
   escalated: boolean;
+  familyPhone: string | null;
   onConfirm: () => void;
   onCall: () => void;
 };
 
-export function AlarmScreen({ pill, escalated, onConfirm, onCall }: AlarmScreenProps) {
+export function AlarmScreen({
+  pill,
+  escalated,
+  familyPhone,
+  onConfirm,
+  onCall,
+}: AlarmScreenProps) {
   const flash = useRef(new Animated.Value(0)).current;
+  const [shown, setShown] = useState(false);
+  const [noPhoneHint, setNoPhoneHint] = useState(false);
 
   useEffect(() => {
+    const timer = setTimeout(() => setShown(true), SHOW_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Voice, vibration and the flashing border only start once the modal is
+  // actually on screen (Modal onShow), not when the component mounts.
+  useEffect(() => {
+    if (!shown) return;
     const speakNow = () =>
       Speech.speak(`Пора принять ${pill.name}`, { language: 'ru-RU', pitch: 1, rate: 0.95 });
     speakNow();
@@ -49,10 +69,25 @@ export function AlarmScreen({ pill, escalated, onConfirm, onCall }: AlarmScreenP
       Speech.stop();
       loop.stop();
     };
-  }, [pill.name, flash]);
+  }, [shown, pill.id, pill.name, flash]);
+
+  const handleCall = () => {
+    if (!familyPhone) {
+      // Don't open Settings from here — that would be a modal on a modal.
+      setNoPhoneHint(true);
+      return;
+    }
+    onCall();
+  };
 
   return (
-    <Modal visible animationType="fade" presentationStyle="fullScreen" statusBarTranslucent>
+    <Modal
+      visible
+      animationType="fade"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      onShow={() => setShown(true)}
+    >
       <SafeAreaView style={styles.safeArea}>
         <Animated.View
           pointerEvents="none"
@@ -80,12 +115,15 @@ export function AlarmScreen({ pill, escalated, onConfirm, onCall }: AlarmScreenP
               </Text>
               <Pressable
                 style={styles.callButton}
-                onPress={onCall}
+                onPress={handleCall}
                 accessibilityRole="button"
                 accessibilityLabel="Позвонить"
               >
                 <Text style={styles.callButtonText}>📞 Позвонить</Text>
               </Pressable>
+              {noPhoneHint && (
+                <Text style={styles.noPhoneHint}>Укажите номер семьи в настройках</Text>
+              )}
             </View>
           )}
         </View>
@@ -139,6 +177,13 @@ const styles = StyleSheet.create({
     color: colors.amber,
     textAlign: 'center',
     marginBottom: 16,
+  },
+  noPhoneHint: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.amber,
+    textAlign: 'center',
+    marginTop: 12,
   },
   callButton: {
     backgroundColor: colors.amber,
