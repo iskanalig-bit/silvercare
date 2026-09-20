@@ -47,6 +47,12 @@ Plain React Native (no expo-router), Expo Go only, AsyncStorage only, no backend
   already scheduled for that exact slot before scheduling new ones. Never
   call the raw Expo Notifications schedule API directly from elsewhere —
   go through this module or duplicates/orphans come back.
+- Scheduling/cancelling is serialized per dose key and all writes to the id
+  map go through one queue (`serializeForKey` / `mutateMap`); ids are merged
+  into a key's list as soon as they exist, never overwritten. Don't bypass.
+- Demo pills (id starts with `demo`) never schedule next-day reminders; when
+  a demo dose is confirmed, `cancelAllDemoReminders()` clears everything of
+  theirs. The `(after confirm)` count must return to the pre-demo count.
 - On app boot, `resetAllNotifications()` wipes every OS-level scheduled
   notification + the id map, then only un-taken doses get rescheduled.
   This is the safety net against accumulation bugs — keep it.

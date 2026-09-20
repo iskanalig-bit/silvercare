@@ -5,6 +5,7 @@ import { AppState, Vibration } from 'react-native';
 import { ESCALATION_MINUTES } from './config';
 import {
   addNotificationTapListener,
+  cancelAllDemoReminders,
   cancelAllForPill,
   cancelDoseReminders,
   dismissDeliveredNotifications,
@@ -89,6 +90,8 @@ function nextUnresolvedOccurrence(
   return occurrence;
 }
 
+const isDemoPill = (pill: Pill) => pill.id.startsWith('demo');
+
 export function useDoseManager() {
   const [pills, setPills] = useState<Pill[]>([]);
   const [doseLog, setDoseLog] = useState<DoseLogEntry[]>([]);
@@ -128,6 +131,10 @@ export function useDoseManager() {
   // so calling this again for the same dose slot can never create
   // duplicates or orphan old notification ids.
   const scheduleAndTrack = useCallback(async (pill: Pill, at: Date) => {
+    // Demo pills only ever schedule for today (their alarm's own follow-ups);
+    // a next-day slot would never be cancelled.
+    if (isDemoPill(pill) && todayDateString(at) !== todayDateString()) return;
+    // Serialization per dose key lives in scheduleDoseReminders.
     await scheduleDoseReminders(pill, at, todayDateString(at));
   }, []);
 
@@ -282,6 +289,7 @@ export function useDoseManager() {
       );
 
       await cancelDoseReminders(doseKey(pill.id, today));
+      if (isDemoPill(pill)) await cancelAllDemoReminders();
       await dismissDeliveredNotifications();
       Speech.stop();
       Vibration.cancel();
@@ -301,10 +309,13 @@ export function useDoseManager() {
         clearEscalationTimer();
       }
 
-      await scheduleAndTrack(
-        pill,
-        nextUnresolvedOccurrence(pill, log, new Date())
-      );
+      // A demo dose has no "next occurrence" — everything of it is cancelled.
+      if (!isDemoPill(pill)) {
+        await scheduleAndTrack(
+          pill,
+          nextUnresolvedOccurrence(pill, log, new Date())
+        );
+      }
       await logScheduledCount('after confirm');
       if (wasMissed) {
         sendLateDoseAlert(pill.name).catch(() => {});

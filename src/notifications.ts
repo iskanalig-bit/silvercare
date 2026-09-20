@@ -62,104 +62,150 @@ async function writeNotifIdMap(map: Record<string, string[]>): Promise<void> {
   await AsyncStorage.setItem(NOTIF_IDS_KEY, JSON.stringify(map));
 }
 
-async function setIdsForKey(key: string, ids: string[]): Promise<void> {
-  const map = await getNotifIdMap();
-  if (ids.length === 0) {
-    delete map[key];
-  } else {
-    map[key] = ids;
-  }
-  await writeNotifIdMap(map);
+// All read-modify-write access to the id map goes through one queue, so two
+// concurrent updates (even for different dose keys) can't overwrite each
+// other's entries.
+let mapChain: Promise<unknown> = Promise.resolve();
+function mutateMap<T>(
+  mutate: (map: Record<string, string[]>) => T
+): Promise<T> {
+  const run = mapChain
+    .catch(() => {})
+    .then(async () => {
+      const map = await getNotifIdMap();
+      const result = mutate(map);
+      await writeNotifIdMap(map);
+      return result;
+    });
+  mapChain = run;
+  return run;
 }
 
-// Cancels whatever is currently scheduled for this dose slot (if anything)
-// and forgets its ids. Safe to call even if nothing was ever scheduled.
-export async function cancelDoseReminders(key: string): Promise<void> {
-  const map = await getNotifIdMap();
-  const ids = map[key] ?? [];
+// Merges ids into a dose key's tracked list (never replaces it), so an id is
+// only ever forgotten when it is explicitly cancelled.
+function addIdForKey(key: string, id: string): Promise<void> {
+  return mutateMap((map) => {
+    map[key] = Array.from(new Set([...(map[key] ?? []), id]));
+  });
+}
+
+// Per-dose-key queue: scheduling/cancelling the same dose slot never runs
+// in parallel, so parallel callers can't leave orphan notifications.
+const keyQueues = new Map<string, Promise<unknown>>();
+function serializeForKey<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const previous = keyQueues.get(key) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(task);
+  keyQueues.set(key, next);
+  next
+    .catch(() => {})
+    .then(() => {
+      if (keyQueues.get(key) === next) keyQueues.delete(key);
+    });
+  return next;
+}
+
+// Cancels every tracked notification for this key and forgets them. Must
+// only be called while holding the key's queue slot.
+async function cancelKeyNow(key: string): Promise<void> {
+  const ids = (await getNotifIdMap())[key] ?? [];
   await Promise.all(
     ids.map((id) =>
       Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
     )
   );
-  if (ids.length > 0) {
+  await mutateMap((map) => {
     delete map[key];
-    await writeNotifIdMap(map);
-  }
+  });
+}
+
+// Cancels whatever is currently scheduled for this dose slot (if anything)
+// and forgets its ids. Safe to call even if nothing was ever scheduled.
+export function cancelDoseReminders(key: string): Promise<void> {
+  return serializeForKey(key, () => cancelKeyNow(key));
+}
+
+async function cancelKeysWithPrefix(prefix: string): Promise<void> {
+  const keys = Object.keys(await getNotifIdMap()).filter((k) =>
+    k.startsWith(prefix)
+  );
+  await Promise.all(keys.map((k) => cancelDoseReminders(k)));
 }
 
 // Cancels every scheduled reminder for a pill regardless of which date it's
 // currently tracked under (a pill only ever has one active dose slot at a
 // time, but we don't want to have to know which date that is). Used when a
 // pill is deleted entirely.
-export async function cancelAllForPill(pillId: string): Promise<void> {
-  const map = await getNotifIdMap();
-  const prefix = `${pillId}:`;
-  const keys = Object.keys(map).filter((k) => k.startsWith(prefix));
-  const ids = keys.flatMap((k) => map[k]);
-  await Promise.all(
-    ids.map((id) =>
-      Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
-    )
-  );
-  if (keys.length > 0) {
-    for (const k of keys) delete map[k];
-    await writeNotifIdMap(map);
-  }
+export function cancelAllForPill(pillId: string): Promise<void> {
+  return cancelKeysWithPrefix(`${pillId}:`);
+}
+
+// Demo pills (id "demo-...") exist only for the demo alarm; once it's
+// dismissed nothing of theirs may stay scheduled.
+export function cancelAllDemoReminders(): Promise<void> {
+  return cancelKeysWithPrefix('demo');
 }
 
 // Schedules the dose-time notification plus FOLLOWUP_COUNT follow-ups every
 // REMINDER_INTERVAL_MINUTES. Idempotent: always cancels any reminders
 // already scheduled for this exact dose slot first, so re-scheduling the
 // same dose (e.g. when its alarm fires) can never create duplicates.
-export async function scheduleDoseReminders(
+export function scheduleDoseReminders(
   pill: Pill,
   doseTime: Date,
   date: string
 ): Promise<string[]> {
   const key = doseKey(pill.id, date);
-  await cancelDoseReminders(key);
+  return serializeForKey(key, async () => {
+    await cancelKeyNow(key);
 
-  const ids: string[] = [];
-  for (let i = 0; i <= FOLLOWUP_COUNT; i++) {
-    const fireDate = new Date(
-      doseTime.getTime() + i * REMINDER_INTERVAL_MINUTES * 60 * 1000
-    );
-    if (fireDate.getTime() <= Date.now()) continue;
-    try {
-      const id = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Пора принять лекарство',
-          body: `${pill.name} — пожалуйста, подтвердите приём в приложении SilverCare`,
-          sound: true,
-          data: { pillId: pill.id, date },
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: fireDate,
-          channelId: 'default',
-        },
-      });
-      ids.push(id);
-    } catch {
-      // Ignore scheduling failures (e.g. unsupported in this environment).
+    const ids: string[] = [];
+    for (let i = 0; i <= FOLLOWUP_COUNT; i++) {
+      const fireDate = new Date(
+        doseTime.getTime() + i * REMINDER_INTERVAL_MINUTES * 60 * 1000
+      );
+      if (fireDate.getTime() <= Date.now()) continue;
+      try {
+        const id = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Пора принять лекарство',
+            body: `${pill.name} — пожалуйста, подтвердите приём в приложении SilverCare`,
+            sound: true,
+            data: { pillId: pill.id, date },
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: fireDate,
+            channelId: 'default',
+          },
+        });
+        ids.push(id);
+        // Track it immediately, merged into the key's list, so a cancel or
+        // reset that lands mid-loop still sees every id scheduled so far.
+        await addIdForKey(key, id);
+      } catch {
+        // Ignore scheduling failures (e.g. unsupported in this environment).
+      }
     }
-  }
-  await setIdsForKey(key, ids);
-  await logScheduledCount(`after scheduling ${pill.name}`);
-  return ids;
+    await logScheduledCount(`after scheduling ${pill.name}`);
+    return ids;
+  });
 }
 
 // Wipes every OS-level scheduled notification and our own id map. Call once
 // on app start before re-scheduling from storage, so notifications orphaned
 // by a previous crash/reload/bug can never accumulate.
 export async function resetAllNotifications(): Promise<void> {
+  // Let any in-flight schedule/cancel finish first so it can't re-add ids to
+  // the map we're about to wipe.
+  await Promise.all([...keyQueues.values()].map((p) => p.catch(() => {})));
   try {
     await Notifications.cancelAllScheduledNotificationsAsync();
   } catch {
     // ignore
   }
-  await AsyncStorage.removeItem(NOTIF_IDS_KEY);
+  await mutateMap((map) => {
+    for (const k of Object.keys(map)) delete map[k];
+  });
 }
 
 export async function dismissDeliveredNotifications(): Promise<void> {
