@@ -8,7 +8,8 @@ export const colors = {
   border: '#DDE3E6',
   amber: '#8A5A00',
   onButton: '#FFFFFF',
-  placeholder: 'rgba(11, 31, 51, 0.45)', // text color at lower opacity
+  muted: '#5A6B75', // lighter tint of text: 5.05:1 on background (≥4.5:1)
+  placeholder: '#5A6B75', // same tint; only for use on colors.background
 } as const;
 
 export const typography = {

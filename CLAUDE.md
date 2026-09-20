@@ -18,11 +18,18 @@ Plain React Native (no expo-router), Expo Go only, AsyncStorage only, no backend
   green `#1A5C3A`, blue `#1D4E89`, navy `#0B1F33`, panel/border `#DDE3E6`,
   amber `#8A5A00`. White text on colored buttons only (`colors.onButton`).
   All colors live in `src/theme.ts` — don't inline new hex values.
-  `colors.placeholder` is the only allowed non-palette-literal color
-  (translucent text color, for input placeholders).
+  `colors.muted`/`colors.placeholder` (`#5A6B75`, a lighter tint of the text
+  color) is the only extra color: input placeholders, empty dots, input
+  borders. It gives 5.05:1 on `colors.background` but only 4.27:1 on
+  `colors.panel`, so inputs use the page background, never the panel.
 - Flat icons only: `@expo/vector-icons` Ionicons, white, no shadows/gradients.
 - Every UI string is Russian.
-- Circle button labels ≥26sp; card label/counter/add-button text ≥22sp.
+- All text on the main screen is ≥24sp (circle labels 26sp; card time 40sp,
+  name 28sp). Auto-fitting text uses `minimumFontScale` 0.86 so it never
+  drops below 24sp. "Добавить лекарство" is an outlined button, min height 64.
+- Circles have a pressed state (scale 0.97, opacity 0.9) and a light haptic.
+  On short screens (e.g. 375×667) the circles overlap vertically instead of
+  shrinking or scrolling.
 
 ## Data model (`src/storage.ts`)
 - `Pill { id, name, time: "HH:MM", createdAt }`. A pill whose time today is

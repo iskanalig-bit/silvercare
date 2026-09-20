@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, CIRCLE_SIZE } from './theme';
@@ -23,6 +24,9 @@ export function CircleButton({
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      }}
       onLongPress={onLongPress}
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -34,7 +38,8 @@ export function CircleButton({
           height: size,
           borderRadius: size / 2,
           backgroundColor,
-          opacity: pressed ? 0.85 : 1,
+          opacity: pressed ? 0.9 : 1,
+          transform: [{ scale: pressed ? 0.97 : 1 }],
         },
       ]}
     >

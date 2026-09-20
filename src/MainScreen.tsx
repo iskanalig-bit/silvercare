@@ -30,6 +30,9 @@ const BOTTOM_CIRCLE_SIZE = 190; // circle minimum — circles never shrink below
 // long to finish before presenting the alarm.
 const MODAL_DISMISS_MS = 400;
 
+// Auto-fitting text never drops below 24sp (28sp * 0.86 ≈ 24, 40sp * 0.86 ≈ 34).
+const MIN_FONT_SCALE = 0.86;
+
 export function MainScreen() {
   const {
     pills,
@@ -105,11 +108,14 @@ export function MainScreen() {
     dialFamily();
   };
 
-  const doseCardText = nextPendingPill
-    ? `${nextPendingPill.time} · ${nextPendingPill.name}`
+  // What the card shows (same conditions as before, split for display).
+  const cardPill = nextPendingPill ?? nextTomorrowPill;
+  const allDone = cardPill === null;
+  const cardTime = nextPendingPill
+    ? nextPendingPill.time
     : nextTomorrowPill
-      ? `Завтра ${nextTomorrowPill.time} · ${nextTomorrowPill.name}`
-      : 'На сегодня всё принято';
+      ? `Завтра ${nextTomorrowPill.time}`
+      : '';
 
   // Circle diameters are fixed (never shrink below 190/210) — only the
   // spacing between them flexes, overlapping (negative margin) instead of
@@ -142,22 +148,59 @@ export function MainScreen() {
           accessibilityRole="button"
           accessibilityLabel="Настройки"
         >
-          <Ionicons name="settings-outline" size={28} color={colors.blue} />
+          <Ionicons name="settings-outline" size={32} color={colors.blue} />
         </Pressable>
 
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>Следующий приём</Text>
-          <Text
-            style={styles.cardValue}
-            numberOfLines={2}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
-          >
-            {doseCardText}
-          </Text>
+          {allDone ? (
+            <View style={styles.doneRow}>
+              <Ionicons name="checkmark-circle" size={40} color={colors.green} />
+              <Text
+                style={styles.doneText}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={MIN_FONT_SCALE}
+              >
+                На сегодня всё принято
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.cardLabel}>Следующий приём</Text>
+              <Text
+                style={styles.cardTime}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={MIN_FONT_SCALE}
+              >
+                {cardTime}
+              </Text>
+              <Text
+                style={styles.cardName}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={MIN_FONT_SCALE}
+              >
+                {cardPill?.name}
+              </Text>
+            </>
+          )}
           <Text style={styles.cardCounter}>
             Сегодня: принято {todayCounts.taken} из {todayCounts.total}
           </Text>
+          {todayCounts.total > 0 && (
+            <View style={styles.dotsRow}>
+              {Array.from({ length: todayCounts.total }, (_, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.dot,
+                    i < todayCounts.taken ? styles.dotFilled : styles.dotEmpty,
+                  ]}
+                />
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={styles.cluster} onLayout={onClusterLayout}>
@@ -194,13 +237,14 @@ export function MainScreen() {
         </View>
 
         <Pressable
-          style={styles.addButton}
+          style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
           onPress={() => openModal(() => setAddModalVisible(true))}
           hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel="Добавить лекарство"
         >
-          <Text style={styles.addButtonText}>+ Добавить лекарство</Text>
+          <Ionicons name="add" size={32} color={colors.blue} />
+          <Text style={styles.addButtonText}>Добавить лекарство</Text>
         </Pressable>
       </View>
 
@@ -269,11 +313,11 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 4,
-    paddingBottom: 8,
+    paddingBottom: 6,
   },
   gearButton: {
-    width: 48,
-    height: 48,
+    width: 56,
+    height: 56,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'flex-start',
@@ -287,22 +331,56 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardLabel: {
-    fontSize: 22,
+    fontSize: 24,
     lineHeight: 26,
     color: colors.text,
-    marginBottom: 0,
   },
-  cardValue: {
+  cardTime: {
+    fontSize: 40,
+    lineHeight: 44,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  cardName: {
+    fontSize: 28,
+    lineHeight: 32,
+    color: colors.text,
+  },
+  doneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  doneText: {
+    flex: 1,
     fontSize: 28,
     lineHeight: 32,
     fontWeight: '700',
     color: colors.text,
   },
   cardCounter: {
-    fontSize: 22,
-    lineHeight: 26,
+    fontSize: 24,
+    lineHeight: 28,
     color: colors.text,
     marginTop: 2,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  dot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+  },
+  dotFilled: {
+    backgroundColor: colors.green,
+  },
+  dotEmpty: {
+    borderWidth: 2,
+    borderColor: colors.muted,
   },
   cluster: {
     flex: 1,
@@ -313,13 +391,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   addButton: {
-    alignSelf: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    alignSelf: 'stretch',
+    minHeight: 64,
+    marginTop: 8,
+    borderWidth: 2,
+    borderColor: colors.blue,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  addButtonPressed: {
+    opacity: 0.85,
+    backgroundColor: colors.panel,
   },
   addButtonText: {
-    fontSize: 22,
-    fontWeight: '600',
+    fontSize: 24,
+    fontWeight: '700',
     color: colors.blue,
   },
   banner: {
@@ -339,7 +428,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel,
   },
   bannerText: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
     color: colors.onButton,
     textAlign: 'center',
