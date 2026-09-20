@@ -7,6 +7,7 @@ export const colors = {
   panel: '#DDE3E6',
   border: '#DDE3E6',
   amber: '#8A5A00',
+  amberSoft: '#F3EAD6', // lighter tint of amber; amber text on it is 4.95:1
   onButton: '#FFFFFF',
   muted: '#5A6B75', // lighter tint of text: 5.05:1 on background (≥4.5:1)
   placeholder: '#5A6B75', // same tint; only for use on colors.background

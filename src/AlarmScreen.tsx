@@ -1,7 +1,17 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Modal, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
+import {
+  Animated,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  Vibration,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CircleButton } from './CircleButton';
@@ -13,6 +23,12 @@ const VIBRATION_INTERVAL_MS = 1_500;
 // Safety net: if the Modal's onShow never fires, start the alarm anyway
 // rather than leaving a due dose completely silent.
 const SHOW_FALLBACK_MS = 2_000;
+// Border pulse: one full cycle per second (500ms up + 500ms down).
+const PULSE_HALF_CYCLE_MS = 500;
+// The confirm circle is the biggest element: at least 240, larger on tall
+// screens.
+const CONFIRM_MIN = 240;
+const CONFIRM_MAX = 300;
 
 type AlarmScreenProps = {
   pill: Pill;
@@ -31,7 +47,12 @@ export function AlarmScreen({
 }: AlarmScreenProps) {
   const flash = useRef(new Animated.Value(0)).current;
   const [shown, setShown] = useState(false);
-  const [noPhoneHint, setNoPhoneHint] = useState(false);
+  const { width, height } = useWindowDimensions();
+
+  const confirmSize = Math.max(
+    CONFIRM_MIN,
+    Math.min(CONFIRM_MAX, width - 64, height * 0.36)
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => setShown(true), SHOW_FALLBACK_MS);
@@ -56,8 +77,16 @@ export function AlarmScreen({
 
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(flash, { toValue: 1, duration: 450, useNativeDriver: true }),
-        Animated.timing(flash, { toValue: 0.15, duration: 450, useNativeDriver: true }),
+        Animated.timing(flash, {
+          toValue: 1,
+          duration: PULSE_HALF_CYCLE_MS,
+          useNativeDriver: true,
+        }),
+        Animated.timing(flash, {
+          toValue: 0.15,
+          duration: PULSE_HALF_CYCLE_MS,
+          useNativeDriver: true,
+        }),
       ])
     );
     loop.start();
@@ -70,15 +99,6 @@ export function AlarmScreen({
       loop.stop();
     };
   }, [shown, pill.id, pill.name, flash]);
-
-  const handleCall = () => {
-    if (!familyPhone) {
-      // Don't open Settings from here — that would be a modal on a modal.
-      setNoPhoneHint(true);
-      return;
-    }
-    onCall();
-  };
 
   return (
     <Modal
@@ -94,35 +114,46 @@ export function AlarmScreen({
           style={[styles.flashBorder, { borderColor: colors.amber, opacity: flash }]}
         />
         <View style={styles.content}>
-          <Text style={styles.eyebrow}>Пора принять лекарство</Text>
-          <Text style={styles.pillName}>{pill.name}</Text>
-          <Text style={styles.time}>Время: {pill.time}</Text>
+          <View style={styles.header}>
+            <Text style={styles.time}>{pill.time}</Text>
+            <Text
+              style={styles.pillName}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
+            >
+              {pill.name}
+            </Text>
+            <Text style={styles.eyebrow}>Пора принять лекарство</Text>
+          </View>
 
-          <View style={styles.confirmWrap}>
+          <View style={styles.confirmArea}>
             <CircleButton
               icon="checkmark-circle-outline"
               label="Принял(а)"
               backgroundColor={colors.green}
               onPress={onConfirm}
-              size={290}
+              size={confirmSize}
             />
           </View>
 
           {escalated && (
             <View style={styles.escalation}>
-              <Text style={styles.escalationText}>
-                Родные оповещены о задержке приёма
-              </Text>
-              <Pressable
-                style={styles.callButton}
-                onPress={handleCall}
-                accessibilityRole="button"
-                accessibilityLabel="Позвонить"
-              >
-                <Text style={styles.callButtonText}>📞 Позвонить</Text>
-              </Pressable>
-              {noPhoneHint && (
-                <Text style={styles.noPhoneHint}>Укажите номер семьи в настройках</Text>
+              <View style={styles.escalationPanel}>
+                <Text style={styles.escalationText}>Родные оповещены</Text>
+              </View>
+              {familyPhone ? (
+                <Pressable
+                  style={({ pressed }) => [styles.callButton, pressed && styles.callPressed]}
+                  onPress={onCall}
+                  accessibilityRole="button"
+                  accessibilityLabel="Позвонить"
+                >
+                  <Ionicons name="call-outline" size={32} color={colors.onButton} />
+                  <Text style={styles.callButtonText}>Позвонить</Text>
+                </Pressable>
+              ) : (
+                <Text style={styles.noPhoneText}>Укажите номер семьи в настройках</Text>
               )}
             </View>
           )}
@@ -143,57 +174,78 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
   },
-  eyebrow: {
-    fontSize: 24,
+  header: {
+    alignItems: 'center',
+  },
+  time: {
+    fontSize: 56,
+    lineHeight: 64,
+    fontWeight: '700',
     color: colors.text,
-    marginBottom: 8,
   },
   pillName: {
     fontSize: 40,
-    fontWeight: '800',
+    lineHeight: 46,
+    fontWeight: '700',
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 8,
   },
-  time: {
-    fontSize: 24,
+  eyebrow: {
+    fontSize: 28,
+    lineHeight: 34,
     color: colors.text,
-    marginBottom: 36,
+    textAlign: 'center',
+    marginTop: 4,
   },
-  confirmWrap: {
-    marginBottom: 24,
+  confirmArea: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   escalation: {
+    alignSelf: 'stretch',
+  },
+  escalationPanel: {
+    backgroundColor: colors.amberSoft,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
     alignItems: 'center',
-    marginTop: 12,
+    marginBottom: 12,
   },
   escalationText: {
-    fontSize: 22,
+    fontSize: 28,
+    lineHeight: 34,
     fontWeight: '700',
     color: colors.amber,
     textAlign: 'center',
-    marginBottom: 16,
-  },
-  noPhoneHint: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.amber,
-    textAlign: 'center',
-    marginTop: 12,
   },
   callButton: {
-    backgroundColor: colors.amber,
+    alignSelf: 'stretch',
+    minHeight: 72,
     borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 32,
+    backgroundColor: colors.navy,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  callPressed: {
+    opacity: 0.9,
   },
   callButtonText: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '700',
     color: colors.onButton,
+  },
+  noPhoneText: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '700',
+    color: colors.amber,
+    textAlign: 'center',
   },
 });

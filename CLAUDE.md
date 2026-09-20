@@ -38,6 +38,13 @@ only — do **not** run `expo export` (or `expo start`, `npx.cmd expo ...`,
   On short screens (e.g. 375×667) the circles overlap vertically instead of
   shrinking or scrolling. The card has no progress dots — just the status
   (or green check + "На сегодня всё принято") and the "Сегодня: принято X из Y" line.
+- Alarm screen: time 56sp bold, pill name 40sp bold (auto-fits down to 24sp),
+  "Пора принять лекарство" 28sp; amber border pulse ~1/s (never >3/s), no red
+  anywhere; confirm circle ≥240dp centered in the space below the header.
+  Escalated: calm amber panel (`colors.amberSoft`) "Родные оповещены" 28sp +
+  full-width navy "Позвонить" button (min 72, Ionicons `call-outline`), or —
+  with no family number — just "Укажите номер семьи в настройках" instead of
+  the button. No emoji icons anywhere; use Ionicons.
 - Memory game: the tile currently shown in the sequence is scale 1.1, white
   fill (explicit exception to "no pure white"), 6px navy border; a "Шаг X из N"
   line (24sp) sits under the instruction; "Закрыть" is full-width, min
