@@ -240,16 +240,17 @@ const styles = StyleSheet.create({
     color: colors.amber,
   },
   resetButton: {
-    backgroundColor: colors.amber,
+    borderWidth: 2,
+    borderColor: colors.amber,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
-    marginTop: 32,
+    marginTop: 64,
   },
   resetButtonText: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.onButton,
+    color: colors.amber,
   },
   closeButton: {
     alignSelf: 'center',

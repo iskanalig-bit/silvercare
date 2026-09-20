@@ -19,4 +19,4 @@ export const typography = {
   label: 22,
 } as const;
 
-export const CIRCLE_SIZE = 210;
+export const CIRCLE_SIZE = 220;

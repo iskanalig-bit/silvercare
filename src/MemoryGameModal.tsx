@@ -73,6 +73,7 @@ export function MemoryGameModal({ visible, onClose }: MemoryGameModalProps) {
   const [phase, setPhase] = useState<'showing' | 'input' | 'success'>('showing');
   const [step, setStep] = useState(0);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [showStep, setShowStep] = useState(0); // 1-based position being shown
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const clearTimers = () => {
@@ -87,9 +88,15 @@ export function MemoryGameModal({ visible, onClose }: MemoryGameModalProps) {
     setStep(0);
     setPhase('showing');
     setActiveIndex(null);
+    setShowStep(0);
     seq.forEach((shapeIndex, i) => {
       const onAt = i * (SHOW_MS + GAP_MS);
-      timers.current.push(setTimeout(() => setActiveIndex(shapeIndex), onAt));
+      timers.current.push(
+        setTimeout(() => {
+          setActiveIndex(shapeIndex);
+          setShowStep(i + 1);
+        }, onAt)
+      );
       timers.current.push(setTimeout(() => setActiveIndex(null), onAt + SHOW_MS));
     });
     const totalTime = seq.length * (SHOW_MS + GAP_MS);
@@ -114,6 +121,13 @@ export function MemoryGameModal({ visible, onClose }: MemoryGameModalProps) {
     }
   };
 
+  const stepNumber =
+    phase === 'showing'
+      ? Math.max(1, showStep)
+      : phase === 'input'
+        ? step + 1
+        : sequence.length;
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
       <SafeAreaView style={styles.safeArea}>
@@ -124,23 +138,35 @@ export function MemoryGameModal({ visible, onClose }: MemoryGameModalProps) {
             {phase === 'input' && 'Теперь повторите тот же порядок'}
             {phase === 'success' && 'Отлично! Вы всё вспомнили верно 🎉'}
           </Text>
+          {sequence.length > 0 && (
+            <Text style={styles.stepText}>
+              Шаг {stepNumber} из {sequence.length}
+            </Text>
+          )}
 
           <View style={styles.grid}>
-            {SHAPES.map((shape, index) => (
-              <Pressable
-                key={shape.id}
-                onPress={() => handleTilePress(index)}
-                accessibilityRole="button"
-                accessibilityLabel={shape.label}
-                style={({ pressed }) => [
-                  styles.tile,
-                  activeIndex === index && styles.tileActive,
-                  pressed && styles.tilePressed,
-                ]}
-              >
-                <Shape kind={shape.kind} color={shape.color} />
-              </Pressable>
-            ))}
+            {SHAPES.map((shape, index) => {
+              // Shown-in-sequence tile is unmistakable; a correct tap during
+              // input keeps the older, subtler pulse.
+              const isShown = phase === 'showing' && activeIndex === index;
+              const isTapped = phase !== 'showing' && activeIndex === index;
+              return (
+                <Pressable
+                  key={shape.id}
+                  onPress={() => handleTilePress(index)}
+                  accessibilityRole="button"
+                  accessibilityLabel={shape.label}
+                  style={({ pressed }) => [
+                    styles.tile,
+                    isTapped && styles.tileActive,
+                    isShown && styles.tileShown,
+                    pressed && styles.tilePressed,
+                  ]}
+                >
+                  <Shape kind={shape.kind} color={shape.color} />
+                </Pressable>
+              );
+            })}
           </View>
 
           {phase === 'success' && (
@@ -179,15 +205,23 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 28,
+    marginBottom: 6,
     minHeight: 60,
+  },
+  stepText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 20,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     width: 292,
     justifyContent: 'space-between',
-    marginBottom: 32,
+    rowGap: 14,
+    marginBottom: 16,
   },
   tile: {
     width: 130,
@@ -198,11 +232,19 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
   },
   tileActive: {
     borderColor: colors.text,
     borderWidth: 4,
+  },
+  // The tile currently being shown in the sequence: bigger, white, heavy
+  // navy border (explicit exception to "no pure white").
+  tileShown: {
+    backgroundColor: colors.onButton,
+    borderColor: colors.navy,
+    borderWidth: 6,
+    transform: [{ scale: 1.1 }],
+    zIndex: 1,
   },
   tilePressed: {
     opacity: 0.8,
@@ -210,9 +252,9 @@ const styles = StyleSheet.create({
   playAgainButton: {
     backgroundColor: colors.green,
     borderRadius: 16,
-    paddingVertical: 18,
+    paddingVertical: 14,
     paddingHorizontal: 28,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   playAgainText: {
     fontSize: 24,
@@ -220,15 +262,17 @@ const styles = StyleSheet.create({
     color: colors.onButton,
   },
   closeButton: {
+    alignSelf: 'stretch',
+    minHeight: 72,
     borderWidth: 2,
-    borderColor: colors.border,
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
+    borderColor: colors.blue,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   closeButtonText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text,
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.blue,
   },
 });

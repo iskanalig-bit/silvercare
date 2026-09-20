@@ -20,8 +20,8 @@ import { colors } from './theme';
 import { useDoseManager } from './useDoseManager';
 
 const GAP = 8;
-const TOP_CIRCLE_SIZE = 210;
-const BOTTOM_CIRCLE_SIZE = 190; // circle minimum — circles never shrink below
+const TOP_CIRCLE_SIZE = 220;
+const BOTTOM_CIRCLE_SIZE = 200; // circle minimum — circles never shrink below
 // this; on a screen too small to fit them with the normal 8px gap, they
 // overlap (negative margin) instead.
 
@@ -117,7 +117,7 @@ export function MainScreen() {
       ? `Завтра ${nextTomorrowPill.time}`
       : '';
 
-  // Circle diameters are fixed (never shrink below 190/210) — only the
+  // Circle diameters are fixed (never shrink below 200/220) — only the
   // spacing between them flexes, overlapping (negative margin) instead of
   // shrinking further when the screen is too small for the normal 8px gap.
   const topSize = TOP_CIRCLE_SIZE;
@@ -188,19 +188,6 @@ export function MainScreen() {
           <Text style={styles.cardCounter}>
             Сегодня: принято {todayCounts.taken} из {todayCounts.total}
           </Text>
-          {todayCounts.total > 0 && (
-            <View style={styles.dotsRow}>
-              {Array.from({ length: todayCounts.total }, (_, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.dot,
-                    i < todayCounts.taken ? styles.dotFilled : styles.dotEmpty,
-                  ]}
-                />
-              ))}
-            </View>
-          )}
         </View>
 
         <View style={styles.cluster} onLayout={onClusterLayout}>
@@ -363,24 +350,6 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     color: colors.text,
     marginTop: 2,
-  },
-  dotsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 4,
-  },
-  dot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-  },
-  dotFilled: {
-    backgroundColor: colors.green,
-  },
-  dotEmpty: {
-    borderWidth: 2,
-    borderColor: colors.muted,
   },
   cluster: {
     flex: 1,

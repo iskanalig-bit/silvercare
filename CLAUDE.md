@@ -5,13 +5,20 @@
 Hackathon MVP medication reminder app for elderly users with weak sight/hearing.
 Plain React Native (no expo-router), Expo Go only, AsyncStorage only, no backend.
 
+## Dev server — hard rule
+**Never start, stop, restart or kill any Expo or Metro dev server, or any
+process on ports 8081 or 8082.** The user runs the dev server themselves in a
+separate terminal. Only edit files. To check code, use `npx tsc --noEmit`
+only — do **not** run `expo export` (or `expo start`, `npx.cmd expo ...`,
+`Stop-Process`/`taskkill` on node, etc.).
+
 ## Hard UI constraints — do not violate without being asked
 - **One screen.** No tabs, side menus, or registration. Everything else
   (add pill, settings, memory game, alarm) is a full-screen `Modal`.
 - Main screen must fit 360×640–430×932 with **no scrolling**. Sizes are
   computed from `useWindowDimensions` + a measured `onLayout`, not hardcoded.
-- Three circles: green "Принял(а)" (top, 210dp), blue "Память" and navy
-  "Позвонить семье" (bottom pair, 190dp each). **190dp is an absolute
+- Three circles: green "Принял(а)" (top, 220dp), blue "Память" and navy
+  "Позвонить семье" (bottom pair, 200dp each). **200dp is an absolute
   floor** — circles never shrink smaller; when the screen is too tight,
   they overlap (negative margin) instead. See `MainScreen.tsx`.
 - Palette only, no pure white, no neon: background `#F3F5F2`, text `#0B1F33`,
@@ -19,8 +26,8 @@ Plain React Native (no expo-router), Expo Go only, AsyncStorage only, no backend
   amber `#8A5A00`. White text on colored buttons only (`colors.onButton`).
   All colors live in `src/theme.ts` — don't inline new hex values.
   `colors.muted`/`colors.placeholder` (`#5A6B75`, a lighter tint of the text
-  color) is the only extra color: input placeholders, empty dots, input
-  borders. It gives 5.05:1 on `colors.background` but only 4.27:1 on
+  color) is the only extra color: input placeholders and input borders. It
+  gives 5.05:1 on `colors.background` but only 4.27:1 on
   `colors.panel`, so inputs use the page background, never the panel.
 - Flat icons only: `@expo/vector-icons` Ionicons, white, no shadows/gradients.
 - Every UI string is Russian.
@@ -29,7 +36,13 @@ Plain React Native (no expo-router), Expo Go only, AsyncStorage only, no backend
   drops below 24sp. "Добавить лекарство" is an outlined button, min height 64.
 - Circles have a pressed state (scale 0.97, opacity 0.9) and a light haptic.
   On short screens (e.g. 375×667) the circles overlap vertically instead of
-  shrinking or scrolling.
+  shrinking or scrolling. The card has no progress dots — just the status
+  (or green check + "На сегодня всё принято") and the "Сегодня: принято X из Y" line.
+- Memory game: the tile currently shown in the sequence is scale 1.1, white
+  fill (explicit exception to "no pure white"), 6px navy border; a "Шаг X из N"
+  line (24sp) sits under the instruction; "Закрыть" is full-width, min
+  height 72, 28sp, outlined. Settings' "Сбросить данные" is an outlined amber
+  button (its confirmation Alert stays).
 
 ## Data model (`src/storage.ts`)
 - `Pill { id, name, time: "HH:MM", createdAt }`. A pill whose time today is
@@ -113,10 +126,10 @@ today it says "На сегодня всё принято" and logs nothing eithe
 
 ## Before committing
 1. `npx tsc --noEmit` must be clean.
-2. `npx expo export --platform android -c` must bundle without errors,
-   then `rm -rf dist` (it's just a sanity check, not an artifact to keep).
+2. That is the only automated check — no `expo export`, no bundling, no
+   dev server (see the hard rule above).
 3. One logical change per commit, with a message explaining *why*, not
    just what.
-4. Real device testing (Expo Go via `npx expo start --tunnel` or LAN) is
-   the user's job — always give concrete test steps in the reply, don't
-   claim something works on-device without them confirming it.
+4. Real device testing is the user's job (they run the dev server) — always
+   give concrete test steps in the reply, don't claim something works
+   on-device without them confirming it.
